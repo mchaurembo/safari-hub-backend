@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Blue background -->
+  <rect width="64" height="64" rx="12" fill="#1677ff"/>
+  <!-- Truck cargo box -->
+  <rect x="6" y="18" width="28" height="20" rx="2" fill="#ffffff"/>
+  <!-- Truck cab -->
+  <path d="M34 24 L34 38 L58 38 L58 28 L50 24 Z" fill="#ffffff"/>
+  <!-- Cab window (blue cutout) -->
+  <path d="M36 26 L36 32 L52 32 L52 26 L50 26 L46 26 Z" fill="#1677ff"/>
+  <!-- Chassis bar -->
+  <rect x="6" y="37" width="52" height="3" rx="1" fill="#ffffff"/>
+  <!-- Left wheel -->
+  <circle cx="17" cy="43" r="6" fill="#1677ff" stroke="#ffffff" stroke-width="2.5"/>
+  <circle cx="17" cy="43" r="2.5" fill="#ffffff"/>
+  <!-- Right wheel -->
+  <circle cx="47" cy="43" r="6" fill="#1677ff" stroke="#ffffff" stroke-width="2.5"/>
+  <circle cx="47" cy="43" r="2.5" fill="#ffffff"/>
+</svg>
