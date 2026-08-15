@@ -324,8 +324,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Email or phone number is required.'], 422);
         }
 
+        $password = (string) $validated['password'];
         $user = $this->findUserByIdentifier($identifier);
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+        $hash = $user?->getRawOriginal('password') ?? $user?->getAttributes()['password'] ?? null;
+        if (! $user || ! is_string($hash) || $hash === '' || ! Hash::check($password, $hash)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 

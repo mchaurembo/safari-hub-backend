@@ -9,8 +9,6 @@ use App\Models\TransportOwner;
 use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
-
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
@@ -22,11 +20,12 @@ class DatabaseSeeder extends Seeder
         $driverRole = Role::where('name', 'driver')->first();
         $customerRole = Role::where('name', 'customer')->first();
 
+        // Plain password: User model casts password => hashed (do not Hash::make here)
         User::firstOrCreate(
             ['email' => 'admin@safarihub360.com'],
             [
                 'name' => 'Admin User',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'role_id' => $adminRole->id,
                 'status' => 'active',
             ]
@@ -36,7 +35,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'owner@safarihub360.com'],
             [
                 'name' => 'Transport Owner',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'role_id' => $ownerRole->id,
                 'status' => 'active',
             ]
@@ -56,7 +55,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'driver@safarihub360.com'],
             [
                 'name' => 'Driver User',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'role_id' => $driverRole->id,
                 'status' => 'active',
             ]
@@ -76,7 +75,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'customer@safarihub360.com'],
             [
                 'name' => 'Customer User',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'role_id' => $customerRole->id,
                 'status' => 'active',
             ]
