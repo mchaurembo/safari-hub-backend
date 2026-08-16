@@ -478,15 +478,16 @@ class GarageController extends Controller
         $email = $email ? strtolower(trim($email)) : null;
         $normalizedPhone = PhoneHelper::normalize($phone);
 
-        $customer = null;
-        if ($email) {
-            $customer = User::where('email', $email)->first();
-        }
-        if (! $customer && $normalizedPhone) {
-            $customer = User::where('phone', $normalizedPhone)
+        $byEmail = $email ? User::where('email', $email)->first() : null;
+        $byPhone = null;
+        if ($normalizedPhone) {
+            $byPhone = User::where('phone', $normalizedPhone)
                 ->orWhere('whatsapp_number', $normalizedPhone)
                 ->first();
         }
+
+        // Prefer phone owner so WhatsApp/SMS can deliver to the number entered on the booking.
+        $customer = $byPhone ?: $byEmail;
 
         $customerRole = Role::firstOrCreate(['name' => 'customer']);
 
@@ -495,7 +496,16 @@ class GarageController extends Controller
             if ($name && $customer->name !== $name) {
                 $updates['name'] = $name;
             }
-            // Only set phone/whatsapp when free or already owned by this user
+            // Attach email only when free (do not steal another account's email)
+            if ($email && ! $customer->email) {
+                $emailTaken = User::where('email', $email)->where('id', '!=', $customer->id)->exists();
+                if (! $emailTaken) {
+                    $updates['email'] = $email;
+                }
+            } elseif ($email && $customer->email !== $email && ! $byPhone) {
+                // Email-matched user: try to set phone only if free
+            }
+
             if ($normalizedPhone) {
                 $phoneTaken = User::where('id', '!=', $customer->id)
                     ->where(function ($q) use ($normalizedPhone) {
