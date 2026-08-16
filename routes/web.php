@@ -21,5 +21,11 @@ Route::get('/{any?}', function () {
         )->header('Content-Type', 'text/plain; charset=UTF-8');
     }
 
-    return response()->file($index);
+    // Prevent sticky browser/CDN caches of SPA shell (old asset hashes).
+    return response()->file($index, [
+        'Content-Type' => 'text/html; charset=UTF-8',
+        'Cache-Control' => 'no-cache, no-store, must-revalidate',
+        'Pragma' => 'no-cache',
+        'Expires' => '0',
+    ]);
 })->where('any', '^(?!api(?:/|$)|up(?:/|$)|storage(?:/|$)).*');
