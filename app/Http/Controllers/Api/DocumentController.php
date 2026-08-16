@@ -5,12 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DriverDocument;
 use App\Models\JobApplication;
+use App\Services\EmploymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
 {
-    /** List active (non-deleted) documents for the authenticated driver */
+    public function __construct(private EmploymentService $employment)
+    {
+    }
+
+    /** List active (non-deleted) documents for the authenticated job seeker / driver */
     public function index(Request $request)
     {
         $driver = $request->user()->driver;
@@ -21,18 +26,17 @@ class DocumentController extends Controller
         return response()->json(['data' => $docs]);
     }
 
-    /** Upload a new document */
+    /** Upload a new document (creates seeker profile if needed — does not grant driver capability) */
     public function store(Request $request)
     {
-        $driver = $request->user()->driver;
-        if (!$driver) return response()->json(['message' => 'Driver profile not found'], 404);
-
         $request->validate([
             'document_type' => 'required|in:driving_license,psv_license,national_id,passport,medical_certificate,police_clearance,other',
             'label'         => 'nullable|string|max:100',
             'file'          => 'required|file|image|max:5120',
             'expiry_date'   => 'nullable|date',
         ]);
+
+        $driver = $this->employment->ensureJobSeekerProfile($request->user());
 
         $file = $request->file('file');
         $path = $file->store("driver-docs/{$driver->id}", 'public');

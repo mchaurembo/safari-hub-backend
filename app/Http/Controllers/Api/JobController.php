@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\JobPosting;
 use App\Models\JobApplication;
+use App\Services\EmploymentService;
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 
 class JobController extends Controller
 {
+    public function __construct(private EmploymentService $employment) {}
     /* ─────────────────────────────────────────────
        OWNER  endpoints
     ───────────────────────────────────────────── */
@@ -124,29 +127,58 @@ class JobController extends Controller
         $data = $request->validate([
             'status'     => 'required|in:accepted,rejected',
             'owner_note' => 'nullable|string',
+            'mark_filled' => 'sometimes|boolean',
         ]);
 
-        $application->update($data);
+        $application->loadMissing('driver.user', 'posting');
 
-        // If accepted, mark the posting as filled if owner wants
-        return response()->json($application->load('driver.user', 'posting'));
+        if ($data['status'] === 'accepted') {
+            $driverUser = $application->driver?->user;
+            if (! $driverUser) {
+                return response()->json(['message' => 'Applicant user missing'], 422);
+            }
+
+            try {
+                $this->employment->employDriver($owner, $driverUser, [
+                    'license_number' => $application->driver->license_number,
+                    'experience_years' => $application->driver->experience_years,
+                ]);
+            } catch (InvalidArgumentException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
+            $application->update([
+                'status' => 'accepted',
+                'owner_note' => $data['owner_note'] ?? $application->owner_note,
+            ]);
+
+            if ($data['mark_filled'] ?? true) {
+                $application->posting->update(['status' => 'filled']);
+            }
+        } else {
+            $application->update($data);
+        }
+
+        return response()->json($application->fresh()->load('driver.user', 'posting'));
     }
 
     /* ─────────────────────────────────────────────
        DRIVER  endpoints
     ───────────────────────────────────────────── */
 
-    /** Browse all open job postings (with owner info) */
+    /** Browse open job postings — any authenticated user (job seeker / customer). */
     public function browsePostings(Request $request)
     {
+        $user = $request->user();
+        $seeker = $user->driver;
+
         $postings = JobPosting::with(['owner.user'])
             ->where('status', 'open')
             ->latest()
             ->get()
-            ->map(function ($p) use ($request) {
-                $driver = $request->user()->driver;
-                $p->my_application = $driver
-                    ? $p->applications()->where('driver_id', $driver->id)->first()
+            ->map(function ($p) use ($seeker) {
+                $p->my_application = $seeker
+                    ? $p->applications()->where('driver_id', $seeker->id)->first()
                     : null;
                 $p->applications_count = $p->applications()->count();
                 return $p;
@@ -155,33 +187,46 @@ class JobController extends Controller
         return response()->json($postings);
     }
 
-    /** Driver applies to a job posting */
+    /** Apply to a job posting as a job seeker (driver role granted only when owner accepts). */
     public function applyToPosting(Request $request, JobPosting $posting)
     {
-        $driver = $request->user()->driver;
-        if (!$driver) return response()->json(['message' => 'Driver profile not found'], 404);
+        $user = $request->user();
 
         if ($posting->status !== 'open') {
             return response()->json(['message' => 'This job is no longer open'], 422);
         }
 
+        // Already employed by another fleet — block applying elsewhere while active.
+        if ($user->driver && $user->driver->owner_id && $user->driver->status === 'active') {
+            return response()->json([
+                'message' => 'You are already employed by a transport fleet. Leave that employment before applying elsewhere.',
+            ], 422);
+        }
+
+        $data = $request->validate([
+            'cover_note'            => 'nullable|string|max:1000',
+            'license_number'        => 'nullable|string|max:50',
+            'experience_years'      => 'nullable|integer|min:0',
+            'attached_document_ids' => 'nullable|array',
+            'attached_document_ids.*' => 'integer|exists:driver_documents,id',
+        ]);
+
+        $seeker = $this->employment->ensureJobSeekerProfile($user, [
+            'license_number' => $data['license_number'] ?? null,
+            'experience_years' => $data['experience_years'] ?? null,
+        ]);
+
         $existing = JobApplication::where('job_posting_id', $posting->id)
-            ->where('driver_id', $driver->id)
+            ->where('driver_id', $seeker->id)
             ->first();
 
         if ($existing) {
             return response()->json(['message' => 'You have already applied to this job'], 422);
         }
 
-        $data = $request->validate([
-            'cover_note'           => 'nullable|string|max:1000',
-            'attached_document_ids' => 'nullable|array',
-            'attached_document_ids.*' => 'integer|exists:driver_documents,id',
-        ]);
-
         $application = JobApplication::create([
             'job_posting_id'        => $posting->id,
-            'driver_id'             => $driver->id,
+            'driver_id'             => $seeker->id,
             'cover_note'            => $data['cover_note'] ?? null,
             'attached_document_ids' => $data['attached_document_ids'] ?? [],
             'status'                => 'pending',
@@ -190,14 +235,15 @@ class JobController extends Controller
         return response()->json($application->load('posting.owner.user'), 201);
     }
 
-    /** Driver views their own applications */
+    /** Job seeker / driver views their own applications */
     public function myApplications(Request $request)
     {
-        $driver = $request->user()->driver;
-        if (!$driver) return response()->json(['data' => []]);
+        $user = $request->user();
+        $seeker = $user->driver;
+        if (!$seeker) return response()->json([]);
 
         $applications = JobApplication::with(['posting.owner.user'])
-            ->where('driver_id', $driver->id)
+            ->where('driver_id', $seeker->id)
             ->latest()
             ->get();
 

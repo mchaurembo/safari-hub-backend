@@ -38,7 +38,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/user/password',    [App\Http\Controllers\Api\AuthController::class, 'changePassword']);
     Route::post('/change-password', [App\Http\Controllers\Api\AuthController::class, 'changePassword']);
 
-    // Role enrollment for multi-role dashboard
+    // Capability enrollment (canonical). /roles/enroll kept as alias.
+    Route::post('/capabilities/enroll', [App\Http\Controllers\Api\AuthController::class, 'enrollRole']);
     Route::post('/roles/enroll',   [App\Http\Controllers\Api\AuthController::class, 'enrollRole']);
 
     // Customer
@@ -52,6 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('/vehicles', App\Http\Controllers\Api\VehicleController::class)->except(['index', 'show']);
     Route::apiResource('/drivers', App\Http\Controllers\Api\DriverController::class)->except(['index', 'show']);
     Route::post('/trips', [App\Http\Controllers\Api\TripController::class, 'store']);
+    Route::post('/routes', [App\Http\Controllers\Api\RouteController::class, 'store']);
     Route::post('/owner/profile', [App\Http\Controllers\Api\OwnerController::class, 'saveProfile']);
     Route::get('/owner/vehicles', [App\Http\Controllers\Api\OwnerController::class, 'vehicles']);
     Route::get('/owner/drivers', [App\Http\Controllers\Api\OwnerController::class, 'drivers']);
@@ -127,6 +129,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Garage Module — Phase 1
     Route::get('/garage/ping', [App\Http\Controllers\Api\GarageController::class, 'ping']);
+    Route::get('/garage/directory', [App\Http\Controllers\Api\GarageController::class, 'directory']);
+    Route::post('/garage', [App\Http\Controllers\Api\GarageController::class, 'createGarage']);
+    Route::post('/garage/join', [App\Http\Controllers\Api\GarageController::class, 'joinAsTechnician']);
     Route::get('/garage/dashboard', [App\Http\Controllers\Api\GarageController::class, 'dashboard']);
     Route::get('/garage/profile', [App\Http\Controllers\Api\GarageController::class, 'showGarage']);
     Route::put('/garage/profile', [App\Http\Controllers\Api\GarageController::class, 'updateGarage']);
@@ -145,4 +150,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/garage/bookings', [App\Http\Controllers\Api\GarageController::class, 'bookings']);
     Route::post('/garage/bookings', [App\Http\Controllers\Api\GarageController::class, 'storeBooking']);
     Route::put('/garage/bookings/{booking}', [App\Http\Controllers\Api\GarageController::class, 'updateBooking']);
+
+    Route::get('/garage/work-orders', [App\Http\Controllers\Api\WorkOrderController::class, 'index']);
+    Route::get('/garage/work-orders/{workOrder}', [App\Http\Controllers\Api\WorkOrderController::class, 'show']);
+    Route::post('/garage/work-orders/{workOrder}/start', [App\Http\Controllers\Api\WorkOrderController::class, 'start']);
+    Route::post('/garage/work-orders/{workOrder}/complete', [App\Http\Controllers\Api\WorkOrderController::class, 'complete']);
+    Route::post('/garage/work-orders/{workOrder}/items', [App\Http\Controllers\Api\WorkOrderController::class, 'addItem']);
+    Route::get('/service-history', [App\Http\Controllers\Api\WorkOrderController::class, 'serviceHistory']);
 });

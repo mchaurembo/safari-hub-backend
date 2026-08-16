@@ -14,32 +14,36 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(RoleSeeder::class);
+        $this->call(PermissionSeeder::class);
 
         $adminRole = Role::where('name', 'admin')->first();
         $ownerRole = Role::where('name', 'owner')->first();
         $driverRole = Role::where('name', 'driver')->first();
         $customerRole = Role::where('name', 'customer')->first();
 
-        // Plain password: User model casts password => hashed (do not Hash::make here)
         User::firstOrCreate(
             ['email' => 'admin@safarihub360.com'],
             [
                 'name' => 'Admin User',
                 'password' => 'password',
-                'role_id' => $adminRole->id,
                 'status' => 'active',
             ]
         );
+        // Plain password: User model casts password => hashed (do not Hash::make here)
+        $admin = User::where('email', 'admin@safarihub360.com')->first();
+        $admin->enrollCapability($adminRole);
+        $admin->refreshLegacyPrimaryRole();
 
         $owner = User::firstOrCreate(
             ['email' => 'owner@safarihub360.com'],
             [
                 'name' => 'Transport Owner',
                 'password' => 'password',
-                'role_id' => $ownerRole->id,
                 'status' => 'active',
             ]
         );
+        $owner->enrollCapability($ownerRole);
+        $owner->refreshLegacyPrimaryRole();
 
         $transportOwner = TransportOwner::firstOrCreate(
             ['user_id' => $owner->id],
@@ -56,10 +60,11 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Driver User',
                 'password' => 'password',
-                'role_id' => $driverRole->id,
                 'status' => 'active',
             ]
         );
+        $driverUser->enrollCapability($driverRole);
+        $driverUser->refreshLegacyPrimaryRole();
 
         Driver::firstOrCreate(
             ['user_id' => $driverUser->id],
@@ -71,15 +76,16 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        User::firstOrCreate(
+        $customer = User::firstOrCreate(
             ['email' => 'customer@safarihub360.com'],
             [
                 'name' => 'Customer User',
                 'password' => 'password',
-                'role_id' => $customerRole->id,
                 'status' => 'active',
             ]
         );
+        $customer->enrollCapability($customerRole);
+        $customer->refreshLegacyPrimaryRole();
 
         $routeDarDodoma = Route::firstOrCreate(
             ['origin' => 'Dar es Salaam', 'destination' => 'Dodoma'],

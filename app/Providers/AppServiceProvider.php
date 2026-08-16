@@ -2,6 +2,15 @@
 
 namespace App\Providers;
 
+use App\Models\Garage;
+use App\Models\GarageBooking;
+use App\Models\Vehicle;
+use App\Models\WorkOrder;
+use App\Policies\GarageBookingPolicy;
+use App\Policies\GaragePolicy;
+use App\Policies\VehiclePolicy;
+use App\Policies\WorkOrderPolicy;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Gate::policy(Vehicle::class, VehiclePolicy::class);
+        Gate::policy(Garage::class, GaragePolicy::class);
+        Gate::policy(GarageBooking::class, GarageBookingPolicy::class);
+        Gate::policy(WorkOrder::class, WorkOrderPolicy::class);
     }
 }

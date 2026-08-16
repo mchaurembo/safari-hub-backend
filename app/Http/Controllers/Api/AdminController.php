@@ -65,31 +65,23 @@ class AdminController extends Controller
             $roleNames = ['customer'];
         }
 
-        $primaryRole = Role::firstOrCreate(['name' => $roleNames[0]]);
-
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
             'password' => Hash::make($validated['password']),
-            'role_id' => $primaryRole->id,
             'status' => $validated['status'] ?? 'active',
         ]);
 
-        $roleIds = [];
         foreach ($roleNames as $name) {
-            $role = Role::firstOrCreate(['name' => $name]);
-            $roleIds[] = $role->id;
+            $user->enrollCapability($name);
+            $this->ensureUserProfileForRole($user, $name, $validated, $request);
         }
-        $user->roles()->sync($roleIds);
-
-        foreach ($roleNames as $roleName) {
-            $this->ensureUserProfileForRole($user, $roleName, $validated, $request);
-        }
+        $user->refreshLegacyPrimaryRole();
 
         return response()->json([
             'message' => 'User created',
-            'data' => $user->load(['role', 'roles', 'transportOwner', 'driver', 'garages']),
+            'data' => $user->fresh(['role', 'roles', 'transportOwner', 'driver', 'garages']),
         ], 201);
     }
 
@@ -206,23 +198,29 @@ class AdminController extends Controller
             $roleIds = [];
             foreach ($roleNames as $name) {
                 $role = Role::firstOrCreate(['name' => $name]);
-                $roleIds[] = $role->id;
+                $roleIds[$role->id] = [
+                    'status' => 'active',
+                    'started_at' => now(),
+                ];
             }
             $user->roles()->sync($roleIds);
-            $user->role_id = Role::where('name', $roleNames[0])->first()->id;
+            $user->unsetRelation('roles');
             unset($validated['roles']);
             foreach ($roleNames as $roleName) {
                 $this->ensureUserProfileForRole($user, $roleName, $validated, $request);
             }
+            $user->refreshLegacyPrimaryRole();
         } elseif (isset($validated['role'])) {
-            $roleId = Role::where('name', $validated['role'])->firstOrFail()->id;
-            $validated['role_id'] = $roleId;
-            $user->roles()->syncWithoutDetaching([$roleId]);
+            $role = Role::where('name', $validated['role'])->firstOrFail();
+            $user->enrollCapability($role);
             $this->ensureUserProfileForRole($user, $validated['role'], $validated, $request);
             unset($validated['role']);
+            // Do not write role_id from request — mirror from capabilities.
         }
 
+        unset($validated['role_id']);
         $user->update(array_filter($validated, fn ($v) => $v !== null && $v !== ''));
+        $user->refreshLegacyPrimaryRole();
 
         return response()->json([
             'message' => 'User updated',
@@ -258,8 +256,9 @@ class AdminController extends Controller
             return response()->json(['message' => 'User already has this role'], 422);
         }
 
-        $user->roles()->attach($role->id);
+        $user->enrollCapability($role);
         $this->ensureUserProfileForRole($user, $validated['role'], $request->all(), $request);
+        $user->refreshLegacyPrimaryRole();
 
         return response()->json([
             'message' => 'Role activated',
@@ -295,12 +294,8 @@ class AdminController extends Controller
         }
 
         $user->roles()->detach($roleModel->id);
-
-        // Update primary role_id if we removed the current primary
-        if ($user->role_id === $roleModel->id) {
-            $newPrimary = $user->roles()->first();
-            $user->update(['role_id' => $newPrimary?->id ?? Role::firstOrCreate(['name' => 'customer'])->id]);
-        }
+        $user->unsetRelation('roles');
+        $user->refreshLegacyPrimaryRole();
 
         return response()->json([
             'message' => 'Role deactivated',
@@ -417,8 +412,7 @@ class AdminController extends Controller
 
     private function ensureAdmin(Request $request): void
     {
-        $role = $request->user()->role;
-        if (!$role || $role->name !== 'admin') {
+        if (! $request->user()->hasCapability('admin')) {
             abort(403, 'Admin access required');
         }
     }

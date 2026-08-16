@@ -5,17 +5,19 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Driver;
 use App\Models\Vehicle;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class VehicleController extends Controller
 {
+    public function __construct(private AuditLogger $audit) {}
+
     public function store(Request $request): JsonResponse
     {
+        $this->authorize('create', Vehicle::class);
+
         $owner = $request->user()->transportOwner;
-        if (!$owner || $owner->status !== 'approved') {
-            return response()->json(['message' => 'Transport owner not approved'], 403);
-        }
 
         $validated = $request->validate([
             'vehicle_number' => 'required|string|max:50',
@@ -30,15 +32,14 @@ class VehicleController extends Controller
             'status' => 'active',
         ]);
 
+        $this->audit->log('vehicle.created', $vehicle, null, $vehicle->toArray());
+
         return response()->json(['data' => $vehicle], 201);
     }
 
     public function update(Request $request, Vehicle $vehicle): JsonResponse
     {
-        $owner = $request->user()->transportOwner;
-        if (!$owner || $vehicle->owner_id !== $owner->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('update', $vehicle);
 
         $validated = $request->validate([
             'vehicle_number' => 'sometimes|string|max:50',
@@ -55,10 +56,7 @@ class VehicleController extends Controller
 
     public function destroy(Request $request, Vehicle $vehicle): JsonResponse
     {
-        $owner = $request->user()->transportOwner;
-        if (!$owner || $vehicle->owner_id !== $owner->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('delete', $vehicle);
 
         $vehicle->delete();
 
@@ -67,10 +65,9 @@ class VehicleController extends Controller
 
     public function assignDriver(Request $request, Vehicle $vehicle): JsonResponse
     {
+        $this->authorize('assignDriver', $vehicle);
+
         $owner = $request->user()->transportOwner;
-        if (!$owner || $vehicle->owner_id !== $owner->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
 
         $validated = $request->validate(['driver_id' => 'required|exists:drivers,id']);
 
@@ -81,6 +78,10 @@ class VehicleController extends Controller
 
         $vehicle->drivers()->syncWithoutDetaching([$driver->id]);
 
+        $this->audit->log('vehicle.driver_assigned', $vehicle, null, [
+            'driver_id' => $driver->id,
+        ]);
+
         return response()->json([
             'message' => 'Driver assigned to vehicle',
             'data' => $vehicle->load('drivers.user'),
@@ -89,12 +90,13 @@ class VehicleController extends Controller
 
     public function unassignDriver(Request $request, Vehicle $vehicle, Driver $driver): JsonResponse
     {
-        $owner = $request->user()->transportOwner;
-        if (!$owner || $vehicle->owner_id !== $owner->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+        $this->authorize('assignDriver', $vehicle);
 
         $vehicle->drivers()->detach($driver->id);
+
+        $this->audit->log('vehicle.driver_unassigned', $vehicle, null, [
+            'driver_id' => $driver->id,
+        ]);
 
         return response()->json([
             'message' => 'Driver removed from vehicle',

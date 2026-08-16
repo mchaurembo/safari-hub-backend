@@ -14,6 +14,10 @@ use Illuminate\Http\Request;
 
 class OwnerController extends Controller
 {
+    /**
+     * Search users the owner can hire: job seekers (applied / seeker profile)
+     * or any active account by name/email/phone (add own driver).
+     */
     public function availableDrivers(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
@@ -21,31 +25,66 @@ class OwnerController extends Controller
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
-        $search = $request->input('search', '');
-
-        // Find users with driver role who are NOT already in this owner's fleet
+        $search = trim((string) $request->input('search', ''));
         $existingDriverUserIds = Driver::where('owner_id', $owner->id)->pluck('user_id');
 
-        $driverRoleId = \App\Models\Role::where('name', 'driver')->value('id');
+        // Prefer seekers: users with a driver row not employed elsewhere, or pending applications.
+        $seekerUserIds = Driver::query()
+            ->where(function ($q) {
+                $q->whereNull('owner_id')
+                    ->orWhere('status', 'inactive');
+            })
+            ->pluck('user_id');
 
-        $users = \App\Models\User::where('role_id', $driverRoleId)
+        $applicantUserIds = \App\Models\JobApplication::query()
+            ->where('status', 'pending')
+            ->whereHas('posting', fn ($q) => $q->where('transport_owner_id', $owner->id))
+            ->with('driver')
+            ->get()
+            ->pluck('driver.user_id')
+            ->filter()
+            ->unique();
+
+        $preferredIds = $seekerUserIds->merge($applicantUserIds)->unique()->values();
+
+        $query = \App\Models\User::query()
             ->where('status', 'active')
             ->whereNotIn('id', $existingDriverUserIds)
-            ->where(function ($q) use ($search) {
-                if ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+            ->where(function ($q) use ($search, $preferredIds) {
+                if ($search !== '') {
+                    // Owner adding their own driver: search any user.
+                    $q->where(function ($sq) use ($search) {
+                        $sq->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    });
+                } else {
+                    // No search: show job seekers / applicants first.
+                    if ($preferredIds->isNotEmpty()) {
+                        $q->whereIn('id', $preferredIds);
+                    } else {
+                        $q->whereRaw('0 = 1');
+                    }
                 }
             })
             ->select('id', 'name', 'email', 'phone')
-            ->limit(20)
-            ->get();
+            ->limit(20);
+
+        $users = $query->get()->map(function ($u) use ($preferredIds, $applicantUserIds) {
+            $u->is_job_seeker = $preferredIds->contains($u->id);
+            $u->has_pending_application = $applicantUserIds->contains($u->id);
+
+            return $u;
+        });
 
         return response()->json(['data' => $users]);
     }
 
     public function saveProfile(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $user->enrollCapability('owner');
+
         $validated = $request->validate([
             'company_name' => 'required|string|max:255',
             'license_number' => 'required|string|max:100',
@@ -53,11 +92,15 @@ class OwnerController extends Controller
         ]);
 
         $owner = TransportOwner::updateOrCreate(
-            ['user_id' => $request->user()->id],
+            ['user_id' => $user->id],
             array_merge($validated, ['status' => 'pending'])
         );
 
-        return response()->json(['data' => $owner, 'message' => 'Profile saved. Awaiting admin approval.']);
+        return response()->json([
+            'data' => $owner,
+            'message' => 'Fleet profile saved. Awaiting admin approval.',
+            'user' => \App\Support\AuthUserPresenter::present($user->fresh()),
+        ]);
     }
 
     public function vehicles(Request $request): JsonResponse

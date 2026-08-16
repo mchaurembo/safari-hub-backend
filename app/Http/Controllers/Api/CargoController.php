@@ -36,19 +36,28 @@ class CargoController extends Controller
         $includeOffline = filter_var($request->input('include_offline', false), FILTER_VALIDATE_BOOLEAN);
 
         // --- Drivers who have a location record ---
-        $locationsQuery = DriverLocation::with(['driver.user', 'driver.vehicles' => function ($q) {
-            $q->where('transport_type', 'cargo')->where('status', 'active');
-        }]);
+        $locationsQuery = DriverLocation::with(['driver.user', 'driver.owner', 'driver.vehicles']);
 
-        if (!$includeOffline) {
+        if (! $includeOffline) {
             $locationsQuery->where('is_available', true);
         }
 
         $located = $locationsQuery->get()
             ->filter(function ($loc) use ($lat, $lng, $radius, $all) {
-                $dist = $this->haversine($lat, $lng, $loc->latitude, $loc->longitude);
+                $driver = $loc->driver;
+                if (! $driver || $driver->status !== 'active' || ! $driver->owner_id) {
+                    return false;
+                }
+
+                $vehicles = $this->resolveCargoVehicles($driver);
+                if ($vehicles->isEmpty()) {
+                    return false;
+                }
+                $driver->setRelation('vehicles', $vehicles);
+
+                $dist = $this->haversine($lat, $lng, (float) $loc->latitude, (float) $loc->longitude);
                 $loc->distance_km = round($dist, 2);
-                if ($loc->driver->vehicles->isEmpty()) return false;
+
                 return $all || $dist <= $radius;
             })
             ->sortBy('distance_km')
@@ -59,38 +68,71 @@ class CargoController extends Controller
 
         $noLocation = collect();
         if ($includeOffline) {
-            $noLocation = Driver::with(['user', 'vehicles' => function ($q) {
-                $q->where('transport_type', 'cargo')->where('status', 'active');
-            }])
+            $noLocation = Driver::with(['user', 'owner', 'vehicles'])
+                ->whereNotNull('owner_id')
+                ->where('status', 'active')
                 ->whereNotIn('id', $locatedDriverIds)
                 ->get()
-                ->filter(fn($d) => $d->vehicles->isNotEmpty())
-                ->map(fn($driver) => [
-                    'id'           => null,
-                    'driver_id'    => $driver->id,
-                    'driver'       => $driver,
-                    'latitude'     => null,
-                    'longitude'    => null,
+                ->filter(function ($driver) {
+                    $vehicles = $this->resolveCargoVehicles($driver);
+                    if ($vehicles->isEmpty()) {
+                        return false;
+                    }
+                    $driver->setRelation('vehicles', $vehicles);
+
+                    return true;
+                })
+                ->map(fn ($driver) => [
+                    'id' => null,
+                    'driver_id' => $driver->id,
+                    'driver' => $driver,
+                    'latitude' => null,
+                    'longitude' => null,
                     'is_available' => false,
-                    'distance_km'  => null,
+                    'distance_km' => null,
                 ])
                 ->values();
         }
 
         // Normalise located entries to arrays too so the collection is uniform
-        $locatedArray = $located->map(fn($loc) => [
-            'id'           => $loc->id,
-            'driver_id'    => $loc->driver_id,
-            'driver'       => $loc->driver,
-            'latitude'     => $loc->latitude,
-            'longitude'    => $loc->longitude,
+        $locatedArray = $located->map(fn ($loc) => [
+            'id' => $loc->id,
+            'driver_id' => $loc->driver_id,
+            'driver' => $loc->driver,
+            'latitude' => $loc->latitude,
+            'longitude' => $loc->longitude,
             'is_available' => $loc->is_available,
-            'distance_km'  => $loc->distance_km,
+            'distance_km' => $loc->distance_km,
         ])->values();
 
         $result = $locatedArray->concat($noLocation)->values();
 
         return response()->json(['data' => $result]);
+    }
+
+    /**
+     * Prefer vehicles assigned to the driver; otherwise use active cargo vehicles from their fleet.
+     */
+    private function resolveCargoVehicles(Driver $driver)
+    {
+        $assigned = $driver->vehicles
+            ->where('transport_type', 'cargo')
+            ->where('status', 'active')
+            ->values();
+
+        if ($assigned->isNotEmpty()) {
+            return $assigned;
+        }
+
+        if (! $driver->owner_id) {
+            return collect();
+        }
+
+        return Vehicle::query()
+            ->where('owner_id', $driver->owner_id)
+            ->where('transport_type', 'cargo')
+            ->where('status', 'active')
+            ->get();
     }
 
     // POST /cargo/requests — customer creates a request
@@ -109,12 +151,27 @@ class CargoController extends Controller
             'weight_kg'         => 'nullable|numeric|min:0',
             'customer_budget'   => 'nullable|numeric|min:0',
             'notes'             => 'nullable|string|max:500',
+            // Road distance from client map (OSRM); preferred over straight-line haversine.
+            'distance_km'       => 'nullable|numeric|min:0.1|max:5000',
         ]);
 
-        $distance = $this->haversine(
-            $validated['pickup_lat'], $validated['pickup_lng'],
-            $validated['dest_lat'],   $validated['dest_lng']
+        $straightLine = $this->haversine(
+            (float) $validated['pickup_lat'], (float) $validated['pickup_lng'],
+            (float) $validated['dest_lat'], (float) $validated['dest_lng']
         );
+
+        $clientDistance = isset($validated['distance_km']) ? (float) $validated['distance_km'] : null;
+        unset($validated['distance_km']);
+
+        // Prefer road distance from the map when it is plausible vs straight-line.
+        $distance = $straightLine;
+        if ($clientDistance !== null) {
+            $minAllowed = max(0.1, $straightLine * 0.85);
+            $maxAllowed = max($straightLine * 4, $straightLine + 50);
+            if ($clientDistance >= $minAllowed && $clientDistance <= $maxAllowed) {
+                $distance = $clientDistance;
+            }
+        }
 
         $cargo = CargoRequest::create([
             ...$validated,

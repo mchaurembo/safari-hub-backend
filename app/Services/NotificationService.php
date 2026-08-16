@@ -22,6 +22,24 @@ use Vonage\SMS\Message\SMS as VonageSMS;
  */
 class NotificationService
 {
+    /* Safari Hub brand palette (matches web/mobile) */
+    private const BRAND_PRIMARY = '#7D1B28';
+    private const BRAND_PRIMARY_DARK = '#5C1420';
+    private const BRAND_GOLD = '#D4A017';
+    private const BRAND_CREAM = '#FBF6E8';
+    private const BRAND_PAGE = '#F7F5F4';
+    private const BRAND_TEXT = '#1A1214';
+    private const BRAND_MUTED = '#7A6E71';
+    private const BRAND_BORDER = '#E5DCDE';
+    private const BRAND_ROW_ALT = '#F3F0EF';
+    private const BRAND_SUCCESS = '#1A7A4C';
+    private const BRAND_SUCCESS_BG = '#E8F5EE';
+    private const BRAND_WARNING = '#C9971A';
+    private const BRAND_WARNING_BG = '#FBF6E8';
+    private const BRAND_INFO = '#2C5F8A';
+    private const BRAND_INFO_BG = '#EAF2F8';
+    private const BRAND_MUTED_BG = '#F3F0EF';
+
     /* ─────────────────────────────────────────────────────────────────────
      |  PUBLIC CARGO EVENT METHODS
      ───────────────────────────────────────────────────────────────────── */
@@ -56,11 +74,11 @@ class NotificationService
         $html = $this->wrap(
             "Hi <strong>{$driverName}</strong>, you have a new cargo request waiting for your quote.",
             $this->table($rows),
-            $this->callout('⏳ Log in to Safari Hub 360 (Trans Cargo) to send your quote', '#fa8c16', '#fff7e6'),
+            $this->callout('⏳ Log in to Safari Hub to send your quote', self::BRAND_WARNING, self::BRAND_WARNING_BG),
             '🚛 New Cargo Request'
         );
 
-        $sms = "Safari Hub 360 (Trans Cargo): New cargo request from {$customerName}.\n"
+        $sms = "Safari Hub: New cargo request from {$customerName}.\n"
              . "From: {$pickupAddress}\nTo: {$destAddress} ({$distanceKm}km).\n"
              . "Budget: {$budgetFmt}. Log in to quote.";
 
@@ -82,28 +100,29 @@ class NotificationService
         ?string $customerWhatsapp = null
     ): void {
         $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $accent = self::BRAND_PRIMARY;
 
         $rows = [
             ['Driver',       $driverName],
             ['Pickup',       $pickupAddress],
             ['Destination',  $destAddress],
             ['Distance',     "{$distanceKm} km"],
-            ['Quoted Price', "<strong style='color:#1677ff;font-size:18px;'>{$priceFmt}</strong>"],
+            ['Quoted Price', "<strong style='color:{$accent};font-size:18px;'>{$priceFmt}</strong>"],
         ];
 
         $html = $this->wrap(
             "Hi <strong>{$customerName}</strong>, your driver has sent a price quote for your cargo request.",
             $this->table($rows),
-            $this->callout('✅ Log in to Safari Hub 360 (Trans Cargo) to accept or decline', '#52c41a', '#f6ffed'),
+            $this->callout('✅ Log in to Safari Hub to accept or decline', self::BRAND_SUCCESS, self::BRAND_SUCCESS_BG),
             '💬 Driver Quoted a Price'
         );
 
-        $sms = "Safari Hub 360 (Trans Cargo): {$driverName} quoted {$priceFmt} for your cargo.\n"
+        $sms = "Safari Hub: {$driverName} quoted {$priceFmt} for your cargo.\n"
              . "From: {$pickupAddress} → {$destAddress}.\n"
              . "Log in to accept or decline.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
-            "Driver Quoted {$priceFmt} — Safari Hub 360", $html, $sms,
+            "Driver Quoted {$priceFmt} — Safari Hub", $html, $sms,
             $customerWhatsapp ?? $customerPhone);
     }
 
@@ -119,26 +138,27 @@ class NotificationService
         ?string $driverWhatsapp = null
     ): void {
         $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $accent = self::BRAND_SUCCESS;
 
         $rows = [
             ['Customer',     $customerName],
             ['Pickup',       $pickupAddress],
             ['Destination',  $destAddress],
-            ['Agreed Price', "<strong style='color:#52c41a;font-size:18px;'>{$priceFmt}</strong>"],
+            ['Agreed Price', "<strong style='color:{$accent};font-size:18px;'>{$priceFmt}</strong>"],
         ];
 
         $html = $this->wrap(
             "Hi <strong>{$driverName}</strong>, the customer has <strong>accepted</strong> your quote. Proceed to pickup.",
             $this->table($rows),
-            $this->callout('🚀 Head to the pickup location now', '#52c41a', '#f6ffed'),
+            $this->callout('🚀 Head to the pickup location now', self::BRAND_SUCCESS, self::BRAND_SUCCESS_BG),
             '✅ Quote Accepted'
         );
 
-        $sms = "Trans-Cargo: {$customerName} accepted your quote of {$priceFmt}.\n"
+        $sms = "Safari Hub: {$customerName} accepted your quote of {$priceFmt}.\n"
              . "Pickup: {$pickupAddress}. Head there now.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
-            "Quote Accepted — Trans-Cargo", $html, $sms,
+            "Quote Accepted — Safari Hub", $html, $sms,
             $driverWhatsapp ?? $driverPhone);
     }
 
@@ -165,14 +185,14 @@ class NotificationService
         $html = $this->wrap(
             "Hi <strong>{$driverName}</strong>, the customer has <strong>declined</strong> your quote of {$priceFmt}.",
             $this->table($rows),
-            $this->callout('ℹ️ The request has been closed', '#8c8c8c', '#fafafa'),
+            $this->callout('ℹ️ The request has been closed', self::BRAND_MUTED, self::BRAND_MUTED_BG),
             '❌ Quote Declined'
         );
 
-        $sms = "Trans-Cargo: {$customerName} declined your quote of {$priceFmt} for the trip from {$pickupAddress}.";
+        $sms = "Safari Hub: {$customerName} declined your quote of {$priceFmt} for the trip from {$pickupAddress}.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
-            "Quote Declined — Trans-Cargo", $html, $sms,
+            "Quote Declined — Safari Hub", $html, $sms,
             $driverWhatsapp ?? $driverPhone);
     }
 
@@ -186,25 +206,27 @@ class NotificationService
         string  $destAddress,
         ?string $customerWhatsapp = null
     ): void {
+        $accent = self::BRAND_INFO;
+
         $rows = [
             ['Driver',      $driverName],
             ['Pickup',      $pickupAddress],
             ['Destination', $destAddress],
-            ['Status',      '<strong style="color:#1677ff;">In Progress</strong>'],
+            ['Status',      "<strong style=\"color:{$accent};\">In Progress</strong>"],
         ];
 
         $html = $this->wrap(
             "Hi <strong>{$customerName}</strong>, your cargo trip has started. The driver is on the way.",
             $this->table($rows),
-            $this->callout('🚛 Your cargo is on the move', '#1677ff', '#e6f4ff'),
+            $this->callout('🚛 Your cargo is on the move', self::BRAND_INFO, self::BRAND_INFO_BG),
             '🚛 Trip Started'
         );
 
-        $sms = "Trans-Cargo: Your cargo trip has started.\n"
+        $sms = "Safari Hub: Your cargo trip has started.\n"
              . "Driver: {$driverName}. From {$pickupAddress} to {$destAddress}.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
-            "Your Cargo Trip Has Started — Trans-Cargo", $html, $sms,
+            "Your Cargo Trip Has Started — Safari Hub", $html, $sms,
             $customerWhatsapp ?? $customerPhone);
     }
 
@@ -219,21 +241,22 @@ class NotificationService
         ?string $customerWhatsapp = null
     ): void {
         $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $accent = self::BRAND_SUCCESS;
 
         $rows = [
             ['Driver',      $driverName],
             ['Delivered To', $destAddress],
-            ['Amount Due',  "<strong style='color:#52c41a;font-size:16px;'>{$priceFmt}</strong>"],
+            ['Amount Due',  "<strong style='color:{$accent};font-size:16px;'>{$priceFmt}</strong>"],
         ];
 
         $html = $this->wrap(
             "Hi <strong>{$customerName}</strong>, your cargo has been delivered. Please confirm receipt.",
             $this->table($rows),
-            $this->callout('✅ Log in to confirm delivery and complete the trip', '#52c41a', '#f6ffed'),
+            $this->callout('✅ Log in to confirm delivery and complete the trip', self::BRAND_SUCCESS, self::BRAND_SUCCESS_BG),
             '📦 Cargo Delivered'
         );
 
-        $sms = "Trans-Cargo: Your cargo has been delivered to {$destAddress} by {$driverName}.\n"
+        $sms = "Safari Hub: Your cargo has been delivered to {$destAddress} by {$driverName}.\n"
              . "Amount: {$priceFmt}. Log in to confirm.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
@@ -256,23 +279,25 @@ class NotificationService
         ?string $vehicleReg = null,
         ?string $customerWhatsapp = null
     ): void {
+        $accent = self::BRAND_INFO;
+
         $rows = [
             ['Garage',      $garageName],
             ['Service',     $serviceName],
             ['Technician',  $technicianName],
             ['Vehicle',     $vehicleReg ?: '—'],
-            ['Status',      '<strong style="color:#1677ff;">In Progress</strong>'],
+            ['Status',      "<strong style=\"color:{$accent};\">In Progress</strong>"],
         ];
 
         $html = $this->wrap(
             "Hi <strong>{$customerName}</strong>, work on your vehicle has started at <strong>{$garageName}</strong>.",
             $this->table($rows),
-            $this->callout('🔧 Your service is now in progress', '#1677ff', '#e6f4ff'),
+            $this->callout('🔧 Your service is now in progress', self::BRAND_PRIMARY, self::BRAND_CREAM),
             '🔧 Service Started'
         );
 
         $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
-        $sms = "Safari Hub 360 (Garage): Your {$serviceName} has started at {$garageName}."
+        $sms = "Safari Hub (Garage): Your {$serviceName} has started at {$garageName}."
              . " Technician: {$technicianName}.{$vehicleLine}";
 
         $this->dispatchAllChannels($customerName, $customerEmail, $customerPhone,
@@ -300,8 +325,9 @@ class NotificationService
         ?string $customerWhatsapp = null
     ): void {
         $amountFmt = $amount !== null ? 'TZS ' . number_format($amount) : null;
+        $success = self::BRAND_SUCCESS;
         $amountHtml = $amountFmt
-            ? "<strong style='color:#52c41a;font-size:16px;'>{$amountFmt}</strong>"
+            ? "<strong style='color:{$success};font-size:16px;'>{$amountFmt}</strong>"
             : '—';
 
         $rows = [
@@ -310,19 +336,19 @@ class NotificationService
             ['Technician',  $technicianName],
             ['Vehicle',     $vehicleReg ?: '—'],
             ['Amount',      $amountHtml],
-            ['Status',      '<strong style="color:#52c41a;">Completed</strong>'],
+            ['Status',      "<strong style=\"color:{$success};\">Completed</strong>"],
         ];
 
         $html = $this->wrap(
             "Hi <strong>{$customerName}</strong>, your <strong>{$serviceName}</strong> at <strong>{$garageName}</strong> is complete.",
             $this->table($rows),
-            $this->callout('✅ Your vehicle is ready for collection', '#52c41a', '#f6ffed'),
+            $this->callout('✅ Your vehicle is ready for collection', self::BRAND_SUCCESS, self::BRAND_SUCCESS_BG),
             '✅ Service Completed'
         );
 
         $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
         $amountLine = $amountFmt ? " Amount: {$amountFmt}." : '';
-        $sms = "Safari Hub 360 (Garage): Your {$serviceName} at {$garageName} is complete."
+        $sms = "Safari Hub (Garage): Your {$serviceName} at {$garageName} is complete."
              . " Technician: {$technicianName}.{$vehicleLine}{$amountLine}";
 
         $detail = trim('Technician: '.$technicianName
@@ -371,7 +397,11 @@ class NotificationService
         }
 
         $waPhone = $whatsappNumber ?: $phone;
-        if ($waPhone) {
+        if (! $waPhone) {
+            Log::warning('Garage WhatsApp skipped — customer has no phone/whatsapp_number');
+            return;
+        }
+
         // Map 5 garage fields into jaspers {{1}} {{2}} {{3}} when that template is active
         $templateParams = $whatsappBodyParams;
         if (is_array($whatsappBodyParams) && count($whatsappBodyParams) >= 5
@@ -385,10 +415,12 @@ class NotificationService
 
         $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, $templateParams);
 
-            // While custom template is PENDING, use approved sample with service details (not hello_world).
-            if (! $sent) {
-                $prevName = config('services.whatsapp.template_name');
-                $prevParams = config('services.whatsapp.template_body_params');
+        // Fallback chain when primary template fails (wrong name, pending approval, etc.)
+        if (! $sent) {
+            $primary = (string) config('services.whatsapp.template_name');
+            $prevParams = config('services.whatsapp.template_body_params');
+
+            if ($primary !== 'jaspers_market_order_confirmation_v1') {
                 $fallbackParams = null;
                 if (is_array($whatsappBodyParams) && count($whatsappBodyParams) >= 5) {
                     $fallbackParams = [
@@ -402,15 +434,31 @@ class NotificationService
                     'services.whatsapp.template_body_params' => 3,
                 ]);
                 $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, $fallbackParams);
-                config([
-                    'services.whatsapp.template_name' => $prevName,
-                    'services.whatsapp.template_body_params' => $prevParams,
-                ]);
             }
 
-            if (! $sent) {
-                Log::warning('WhatsApp garage notify failed (primary + fallback templates)');
+            if (! $sent && $primary !== 'hello_world') {
+                config([
+                    'services.whatsapp.template_name' => 'hello_world',
+                    'services.whatsapp.template_body_params' => 0,
+                ]);
+                $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, null);
             }
+
+            config([
+                'services.whatsapp.template_name' => $primary,
+                'services.whatsapp.template_body_params' => $prevParams,
+            ]);
+        }
+
+        // Last resort: free-form text (works only inside Meta's 24h customer-care window)
+        if (! $sent) {
+            $sent = $this->sendWhatsApp($waPhone, $smsText);
+        }
+
+        if (! $sent) {
+            Log::warning('WhatsApp garage notify failed (templates + text). Check WHATSAPP_TOKEN (Meta temp tokens expire ~24h) and recipient allow-list.', [
+                'to' => $waPhone,
+            ]);
         }
     }
 
@@ -471,7 +519,7 @@ class NotificationService
 
         try {
             Resend::emails()->send([
-                'from'    => config('mail.from.name', 'Trans-Cargo') . ' <' . config('mail.from.address', 'onboarding@resend.dev') . '>',
+                'from'    => config('mail.from.name', 'Safari Hub') . ' <' . config('mail.from.address', 'onboarding@resend.dev') . '>',
                 'to'      => [$to],
                 'subject' => $subject,
                 'html'    => $html,
@@ -623,6 +671,9 @@ class NotificationService
         $errMsg = $decoded['error']['message'] ?? $response;
         $errCode = $decoded['error']['code'] ?? null;
         Log::warning("WhatsApp {$kind} failed to {$to} (HTTP {$httpCode}" . ($errCode ? ", code {$errCode}" : '') . "): {$errMsg}");
+        if ((int) $httpCode === 401 || (int) $errCode === 190) {
+            Log::error('WhatsApp Authentication Error — refresh WHATSAPP_TOKEN in backend/.env (Meta temporary tokens expire in ~24h), then run: php artisan config:clear');
+        }
         return false;
     }
 
@@ -681,15 +732,21 @@ class NotificationService
     /** Build an HTML table from [label, value] rows */
     private function table(array $rows): string
     {
-        $html = "<table style='width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;'>";
+        $alt = self::BRAND_ROW_ALT;
+        $border = self::BRAND_BORDER;
+        $text = self::BRAND_TEXT;
+        $muted = self::BRAND_MUTED;
+
+        $html = "<table style='width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;border:1px solid {$border};border-radius:10px;overflow:hidden;'>";
         foreach ($rows as $i => [$label, $value]) {
-            $bg = $i % 2 === 0 ? '#f0f7ff' : '#ffffff';
+            $bg = $i % 2 === 0 ? $alt : '#ffffff';
             $html .= "<tr style='background:{$bg};'>
-                <td style='padding:10px 14px;font-weight:600;color:#333;width:38%;border-bottom:1px solid #e8f0fe;'>{$label}</td>
-                <td style='padding:10px 14px;color:#555;border-bottom:1px solid #e8f0fe;'>{$value}</td>
+                <td style='padding:10px 14px;font-weight:600;color:{$text};width:38%;border-bottom:1px solid {$border};'>{$label}</td>
+                <td style='padding:10px 14px;color:{$muted};border-bottom:1px solid {$border};'>{$value}</td>
               </tr>";
         }
-        $html .= "</table>";
+        $html .= '</table>';
+
         return $html;
     }
 
@@ -698,35 +755,47 @@ class NotificationService
     {
         return "<div style='text-align:center;margin:24px 0;'>
           <span style='display:inline-block;background:{$bgColor};border:2px solid {$borderColor};
-            border-radius:8px;padding:12px 28px;font-size:15px;font-weight:700;color:{$borderColor};'>
+            border-radius:12px;padding:12px 28px;font-size:15px;font-weight:700;color:{$borderColor};'>
             {$text}
           </span>
         </div>";
     }
 
-    /** Wrap content in the branded email shell */
+    /** Wrap content in the Safari Hub branded email shell */
     private function wrap(string $intro, string $table, string $callout, string $header): string
     {
+        $primary = self::BRAND_PRIMARY;
+        $primaryDark = self::BRAND_PRIMARY_DARK;
+        $gold = self::BRAND_GOLD;
+        $cream = self::BRAND_CREAM;
+        $page = self::BRAND_PAGE;
+        $text = self::BRAND_TEXT;
+        $muted = self::BRAND_MUTED;
+        $border = self::BRAND_BORDER;
+        $rowAlt = self::BRAND_ROW_ALT;
+
         return <<<HTML
         <!DOCTYPE html>
         <html>
-        <head><meta charset="UTF-8"></head>
-        <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
-          <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;
-                      overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-            <div style="background:#1677ff;padding:24px 32px;">
-              <h1 style="color:#fff;margin:0;font-size:20px;">{$header}</h1>
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+        <body style="font-family:'Segoe UI',Arial,sans-serif;background:{$page};margin:0;padding:24px;">
+          <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;
+                      overflow:hidden;box-shadow:0 8px 28px rgba(125,27,40,0.12);border:1px solid {$border};">
+            <div style="background:linear-gradient(135deg, {$primary} 0%, {$primaryDark} 70%, {$gold} 160%);padding:22px 28px;">
+              <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:{$cream};opacity:0.9;margin-bottom:6px;font-weight:700;">Safari Hub</div>
+              <h1 style="color:#fff;margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em;">{$header}</h1>
             </div>
-            <div style="padding:32px;">
-              <p style="color:#333;font-size:15px;margin-top:0;">{$intro}</p>
+            <div style="height:4px;background:linear-gradient(90deg, {$gold}, {$cream}, {$primary});"></div>
+            <div style="padding:28px;">
+              <p style="color:{$text};font-size:15px;line-height:1.55;margin-top:0;">{$intro}</p>
               {$table}
               {$callout}
-              <p style="color:#aaa;font-size:12px;margin-bottom:0;">
-                Do not reply to this email. Log in to Trans-Cargo to take action.
+              <p style="color:{$muted};font-size:12px;margin-bottom:0;line-height:1.5;">
+                Do not reply to this email. Log in to Safari Hub to take action.
               </p>
             </div>
-            <div style="background:#f9f9f9;padding:14px 32px;text-align:center;">
-              <p style="color:#bbb;font-size:11px;margin:0;">© Trans-Cargo · Automated Notification</p>
+            <div style="background:{$rowAlt};padding:14px 28px;text-align:center;border-top:1px solid {$border};">
+              <p style="color:{$muted};font-size:11px;margin:0;">© Safari Hub · Move. Work. Connect.</p>
             </div>
           </div>
         </body>

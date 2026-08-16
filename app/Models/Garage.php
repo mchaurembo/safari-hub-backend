@@ -34,5 +34,15 @@ class Garage extends Model
     {
         return $this->hasMany(GarageBooking::class);
     }
+
+    public function members(): HasMany
+    {
+        return $this->hasMany(GarageMember::class);
+    }
+
+    public function activeMembers(): HasMany
+    {
+        return $this->members()->where('status', 'active')->whereNull('left_at');
+    }
 }
 

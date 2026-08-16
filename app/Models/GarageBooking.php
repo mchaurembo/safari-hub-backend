@@ -61,4 +61,9 @@ class GarageBooking extends Model
     {
         return $this->hasMany(BookingUpdate::class, 'booking_id');
     }
+
+    public function workOrder(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(WorkOrder::class, 'garage_booking_id');
+    }
 }

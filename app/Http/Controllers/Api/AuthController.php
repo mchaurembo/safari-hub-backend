@@ -10,6 +10,7 @@ use App\Models\Driver;
 use App\Models\Technician;
 use App\Models\TransportOwner;
 use App\Models\User;
+use App\Support\AuthUserPresenter;
 use Vonage\Client as VonageClient;
 use Vonage\Client\Credentials\Basic as VonageBasic;
 use Vonage\SMS\Message\SMS as VonageSMS;
@@ -32,27 +33,35 @@ class AuthController extends Controller
         // If the user_roles pivot is empty (common for accounts created before
         // the pivot migration), backfill from the single active role_id.
         // This keeps older accounts compatible with the new multi-role UI.
-        if (! $user->role_id) return;
-        // Always ensure the legacy active role is present in the pivot.
-        // This fixes cases where pivot rows exist but the current `users.role_id`
-        // is missing from `user_roles`.
-        $user->roles()->syncWithoutDetaching([$user->role_id]);
+        if ($user->role_id) {
+            $legacyRole = Role::find($user->role_id);
+            if ($legacyRole) {
+                $user->enrollCapability($legacyRole);
+            }
+        }
 
         // Backfill pivot rows based on existing legacy module profile records.
         // This keeps the dashboard tiles accurate even if older accounts were
         // created before `user_roles` was introduced.
         $maybeRoles = [
             'owner' => $user->transportOwner()->exists(),
-            'driver' => $user->driver()->exists(),
+            // Driver capability is granted by fleet owners on hire — not by a seeker profile alone.
+            'driver' => $user->driver()->whereNotNull('owner_id')->exists(),
             'garage_owner' => $user->garages()->exists(),
             'technician' => $user->technicians()->exists(),
         ];
 
         foreach ($maybeRoles as $name => $shouldAttach) {
-            if (! $shouldAttach) continue;
-            $role = Role::firstOrCreate(['name' => $name]);
-            $user->roles()->syncWithoutDetaching([$role->id]);
+            if (! $shouldAttach) {
+                continue;
+            }
+            $user->enrollCapability($name);
         }
+    }
+
+    private function authUserPayload(User $user): array
+    {
+        return AuthUserPresenter::present($user->fresh());
     }
 
     /** Return all common formats for a Tanzanian phone (handles legacy DB formats). */
@@ -98,7 +107,7 @@ class AuthController extends Controller
                 }
             }],
             'password' => ['required', 'confirmed', Password::defaults()],
-            'role'     => 'required|in:admin,owner,driver,customer,garage_owner,technician',
+            'role'     => 'required|in:admin,owner,customer,garage_owner,technician',
         ]);
 
         $email = strtolower(trim($validated['email']));
@@ -134,7 +143,6 @@ class AuthController extends Controller
                 'name'     => $validated['name'],
                 'phone'    => $phone,
                 'password' => Hash::make($validated['password']),
-                'role_id'  => $role->id,
             ]);
 
             $user = $existingUser;
@@ -144,13 +152,13 @@ class AuthController extends Controller
                 'email'    => $validated['email'],
                 'phone'    => $phone,
                 'password' => Hash::make($validated['password']),
-                'role_id'  => $role->id,
                 'status'   => 'active',
             ]);
         }
 
-        // Enroll the selected role without removing other roles.
-        $user->roles()->syncWithoutDetaching([$role->id]);
+        // Enroll capability — legacy role_id is mirrored from preferred capability.
+        $user->enrollCapability($role);
+        $user->refreshLegacyPrimaryRole();
 
         if ($validated['role'] === 'owner') {
             // If the user already exists, don't duplicate transport owner records.
@@ -183,128 +191,38 @@ class AuthController extends Controller
         return response()->json([
             'token'      => $token,
             'token_type' => 'Bearer',
-            'user'       => $user->load(['role', 'roles', 'transportOwner', 'driver']),
+            'user'       => $this->authUserPayload($user),
         ], 201);
     }
 
     /**
-     * Enroll the authenticated user into an additional role/module.
-     * This is used by the tiles dashboard after login.
+     * Enroll the authenticated user into an additional capability.
+     * Does NOT create fleet/garage resources — use create/join endpoints next.
      */
     public function enrollRole(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'role' => 'required|in:customer,owner,driver,garage_owner,technician',
-            'company_name' => 'nullable|string|max:255',
-            'license_number' => 'nullable|string|max:100',
-            'address' => 'nullable|string',
-            'garage_name' => 'nullable|string|max:255',
-            'location' => 'nullable|string',
-            'driver_license_number' => 'nullable|string|max:100',
-            'driver_experience_years' => 'nullable|integer|min:0',
-            'specialization' => 'nullable|string|max:255',
+            'role' => 'required|in:customer,owner,garage_owner,technician',
         ]);
 
-        // Auto-create missing roles (older DBs).
         $role = Role::firstOrCreate(['name' => $validated['role']]);
         $user = $request->user();
 
-        // Attach role without removing the others.
-        $user->roles()->syncWithoutDetaching([$role->id]);
-
-        // Keep legacy column in sync (some parts still depend on users.role_id).
-        $user->update(['role_id' => $role->id]);
-
-        if ($validated['role'] === 'owner') {
-            if (! $user->transportOwner) {
-                TransportOwner::create([
-                    'user_id' => $user->id,
-                    'company_name' => $validated['company_name'] ?: 'My Transport Company',
-                    'license_number' => $validated['license_number'] ?: 'TEMP-LICENSE',
-                    'address' => $validated['address'] ?? null,
-                    'status' => 'pending',
-                ]);
-            }
-        }
-
-        if ($validated['role'] === 'driver') {
-            // Driver requires an owner profile (TransportOwner).
-            $transportOwner = $user->transportOwner;
-            if (! $transportOwner) {
-                // If the user didn't enroll as owner yet, allow driver enrollment
-                // by creating a TransportOwner record from provided details.
-                TransportOwner::create([
-                    'user_id' => $user->id,
-                    'company_name' => $validated['company_name'] ?: 'My Transport Company',
-                    'license_number' => $validated['license_number'] ?: 'TEMP-LICENSE',
-                    'address' => $validated['address'] ?? null,
-                    'status' => 'pending',
-                ]);
-
-                $transportOwner = $user->transportOwner()->first();
-            }
-
-            if (! $transportOwner) {
-                return response()->json(['message' => 'Transport owner profile missing'], 422);
-            }
-
-            $driverLicense = $validated['driver_license_number'] ?: 'TEMP-DL';
-            $driverExperience = $validated['driver_experience_years'] ?? 0;
-
-            $driver = Driver::firstOrCreate(
-                ['user_id' => $user->id, 'owner_id' => $transportOwner->id],
-                ['license_number' => $driverLicense, 'experience_years' => $driverExperience, 'status' => 'active']
-            );
-
-            // Update minimal fields if already exists.
-            $driver->update([
-                'license_number' => $driverLicense,
-                'experience_years' => $driverExperience,
-            ]);
-        }
-
-        if ($validated['role'] === 'garage_owner') {
-            if (! $user->garages()->exists()) {
-                Garage::create([
-                    'owner_id' => $user->id,
-                    'name' => $validated['garage_name'] ?: 'My Garage',
-                    'location' => $validated['location'] ?? null,
-                    'status' => 'active',
-                ]);
-            }
-        }
-
-        if ($validated['role'] === 'technician') {
-            if (! $user->garages()->exists()) {
-                // If the user didn't enroll as garage owner yet, allow technician enrollment
-                // by creating a Garage record from provided details.
-                Garage::create([
-                    'owner_id' => $user->id,
-                    'name' => $validated['garage_name'] ?: 'My Garage',
-                    'location' => $validated['location'] ?? null,
-                    'status' => 'active',
-                ]);
-            }
-
-            $garage = $user->garages()->orderByDesc('id')->first();
-
-            if (! $garage) {
-                return response()->json(['message' => 'Garage profile missing'], 422);
-            }
-
-            $spec = $validated['specialization'] ?? 'General';
-
-            Technician::firstOrCreate(
-                ['user_id' => $user->id, 'garage_id' => $garage->id],
-                ['specialization' => $spec, 'status' => 'active']
-            );
-        }
-
+        $user->enrollCapability($role);
         $this->ensurePivotRoles($user);
+        $user->refreshLegacyPrimaryRole();
+
+        $nextStep = match ($validated['role']) {
+            'owner' => $user->transportOwner ? null : 'create_fleet',
+            'garage_owner' => $user->garages()->exists() ? null : 'create_garage',
+            'technician' => $user->technicians()->exists() ? null : 'join_garage',
+            default => null,
+        };
 
         return response()->json([
-            'message' => 'Role enrolled',
-            'user' => $user->fresh()->load(['role', 'roles', 'transportOwner', 'driver', 'garages']),
+            'message' => 'Capability enrolled',
+            'next_step' => $nextStep,
+            'user' => $this->authUserPayload($user),
         ]);
     }
 
@@ -338,6 +256,7 @@ class AuthController extends Controller
         }
 
         $this->ensurePivotRoles($user);
+        $user->refreshLegacyPrimaryRole();
 
         $user->tokens()->delete();
         $token = $user->createToken('auth-token')->plainTextToken;
@@ -345,7 +264,7 @@ class AuthController extends Controller
         return response()->json([
             'token'      => $token,
             'token_type' => 'Bearer',
-            'user'       => $user->load(['role', 'roles', 'transportOwner', 'driver']),
+            'user'       => $this->authUserPayload($user),
         ]);
     }
 
@@ -360,9 +279,9 @@ class AuthController extends Controller
     {
         $user = $request->user();
         $this->ensurePivotRoles($user);
-        $user = $user->load(['role', 'roles', 'transportOwner', 'driver']);
+        $user->refreshLegacyPrimaryRole();
 
-        return response()->json(['user' => $user]);
+        return response()->json(['user' => $this->authUserPayload($user)]);
     }
 
     /** GET /me — used by mobile app */
@@ -370,8 +289,9 @@ class AuthController extends Controller
     {
         $user = $request->user();
         $this->ensurePivotRoles($user);
-        $user = $user->load(['role', 'roles', 'transportOwner', 'driver']);
-        return response()->json(['user' => $user]);
+        $user->refreshLegacyPrimaryRole();
+
+        return response()->json(['user' => $this->authUserPayload($user)]);
     }
 
     /** PUT /profile — update name, phone, whatsapp_number */
@@ -402,7 +322,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Profile updated successfully',
-            'user'    => $user->fresh()->load(['role', 'transportOwner', 'driver']),
+            'user'    => $this->authUserPayload($user),
         ]);
     }
 
