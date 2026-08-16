@@ -92,6 +92,11 @@ class User extends Authenticatable
         return $this->hasMany(Booking::class, 'customer_id');
     }
 
+    public function garageBookings(): HasMany
+    {
+        return $this->hasMany(GarageBooking::class, 'customer_id');
+    }
+
     public function garages(): HasMany
     {
         // Garage owner profiles for Garage Services module.

@@ -48,6 +48,11 @@ return [
     'whatsapp' => [
         'token'           => env('WHATSAPP_TOKEN', ''),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID', ''),
+        // Business-initiated messages must use an approved template (hello_world works in Meta test mode).
+        'template_name'   => env('WHATSAPP_TEMPLATE_NAME', 'hello_world'),
+        'template_lang'   => env('WHATSAPP_TEMPLATE_LANG', 'en_US'),
+        // Set to 1 if your template has a single {{1}} body variable for the notification text.
+        'template_body_params' => (int) env('WHATSAPP_TEMPLATE_BODY_PARAMS', 0),
     ],
 
     /*

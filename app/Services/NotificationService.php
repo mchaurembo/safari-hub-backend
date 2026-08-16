@@ -242,8 +242,167 @@ class NotificationService
     }
 
     /* ─────────────────────────────────────────────────────────────────────
+     |  GARAGE SERVICE EVENTS
+     ───────────────────────────────────────────────────────────────────── */
+
+    /** Technician starts garage service → notify customer */
+    public function customerGarageServiceStarted(
+        string  $customerName,
+        ?string $customerEmail,
+        ?string $customerPhone,
+        string  $garageName,
+        string  $serviceName,
+        string  $technicianName,
+        ?string $vehicleReg = null,
+        ?string $customerWhatsapp = null
+    ): void {
+        $rows = [
+            ['Garage',      $garageName],
+            ['Service',     $serviceName],
+            ['Technician',  $technicianName],
+            ['Vehicle',     $vehicleReg ?: '—'],
+            ['Status',      '<strong style="color:#1677ff;">In Progress</strong>'],
+        ];
+
+        $html = $this->wrap(
+            "Hi <strong>{$customerName}</strong>, work on your vehicle has started at <strong>{$garageName}</strong>.",
+            $this->table($rows),
+            $this->callout('🔧 Your service is now in progress', '#1677ff', '#e6f4ff'),
+            '🔧 Service Started'
+        );
+
+        $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
+        $sms = "Safari Hub 360 (Garage): Your {$serviceName} has started at {$garageName}."
+             . " Technician: {$technicianName}.{$vehicleLine}";
+
+        $this->dispatchAllChannels($customerName, $customerEmail, $customerPhone,
+            "Service Started — {$garageName}", $html, $sms,
+            $customerWhatsapp ?? $customerPhone,
+            [
+                $customerName,
+                $garageName,
+                $serviceName,
+                'STARTED',
+                trim('Technician: '.$technicianName.($vehicleReg ? '. Vehicle: '.$vehicleReg : '').'. Work is in progress.'),
+            ]);
+    }
+
+    /** Technician completes garage service → notify customer */
+    public function customerGarageServiceCompleted(
+        string  $customerName,
+        ?string $customerEmail,
+        ?string $customerPhone,
+        string  $garageName,
+        string  $serviceName,
+        string  $technicianName,
+        ?string $vehicleReg = null,
+        ?float  $amount = null,
+        ?string $customerWhatsapp = null
+    ): void {
+        $amountFmt = $amount !== null ? 'TZS ' . number_format($amount) : null;
+        $amountHtml = $amountFmt
+            ? "<strong style='color:#52c41a;font-size:16px;'>{$amountFmt}</strong>"
+            : '—';
+
+        $rows = [
+            ['Garage',      $garageName],
+            ['Service',     $serviceName],
+            ['Technician',  $technicianName],
+            ['Vehicle',     $vehicleReg ?: '—'],
+            ['Amount',      $amountHtml],
+            ['Status',      '<strong style="color:#52c41a;">Completed</strong>'],
+        ];
+
+        $html = $this->wrap(
+            "Hi <strong>{$customerName}</strong>, your <strong>{$serviceName}</strong> at <strong>{$garageName}</strong> is complete.",
+            $this->table($rows),
+            $this->callout('✅ Your vehicle is ready for collection', '#52c41a', '#f6ffed'),
+            '✅ Service Completed'
+        );
+
+        $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
+        $amountLine = $amountFmt ? " Amount: {$amountFmt}." : '';
+        $sms = "Safari Hub 360 (Garage): Your {$serviceName} at {$garageName} is complete."
+             . " Technician: {$technicianName}.{$vehicleLine}{$amountLine}";
+
+        $detail = trim('Technician: '.$technicianName
+            .($vehicleReg ? '. Vehicle: '.$vehicleReg : '')
+            .($amountFmt ? '. Amount: '.$amountFmt : '')
+            .'. Your vehicle is ready for collection.');
+
+        $this->dispatchAllChannels($customerName, $customerEmail, $customerPhone,
+            "Service Completed — {$garageName}", $html, $sms,
+            $customerWhatsapp ?? $customerPhone,
+            [
+                $customerName,
+                $garageName,
+                $serviceName,
+                'COMPLETED',
+                $detail,
+            ]);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
      |  CORE DISPATCH
      ───────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Garage notifications: send email + SMS + WhatsApp when each channel has a destination.
+     * Unlike dispatch(), WhatsApp success does not skip SMS.
+     */
+    private function dispatchAllChannels(
+        string  $name,
+        ?string $email,
+        ?string $phone,
+        string  $subject,
+        string  $html,
+        string  $smsText,
+        ?string $whatsappNumber = null,
+        ?array  $whatsappBodyParams = null
+    ): void {
+        $this->clearProxyEnv();
+
+        if ($email) {
+            $this->sendEmail($name, $email, $subject, $html);
+        }
+
+        if ($phone) {
+            $this->sendSms($phone, $smsText);
+        }
+
+        $waPhone = $whatsappNumber ?: $phone;
+        if ($waPhone) {
+            // Prefer professional safari_hub_garage_update (when Meta status=APPROVED).
+            $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, $whatsappBodyParams);
+
+            // While custom template is PENDING, use approved sample with service details (not hello_world).
+            if (! $sent) {
+                $prevName = config('services.whatsapp.template_name');
+                $prevParams = config('services.whatsapp.template_body_params');
+                $fallbackParams = null;
+                if (is_array($whatsappBodyParams) && count($whatsappBodyParams) >= 5) {
+                    $fallbackParams = [
+                        $whatsappBodyParams[0],
+                        $whatsappBodyParams[2].' — '.$whatsappBodyParams[3],
+                        $whatsappBodyParams[1].'. '.$whatsappBodyParams[4],
+                    ];
+                }
+                config([
+                    'services.whatsapp.template_name' => 'jaspers_market_order_confirmation_v1',
+                    'services.whatsapp.template_body_params' => 3,
+                ]);
+                $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, $fallbackParams);
+                config([
+                    'services.whatsapp.template_name' => $prevName,
+                    'services.whatsapp.template_body_params' => $prevParams,
+                ]);
+            }
+
+            if (! $sent) {
+                Log::warning('WhatsApp garage notify failed (primary + fallback templates)');
+            }
+        }
+    }
 
     private function dispatch(
         string  $name,
@@ -329,6 +488,7 @@ class NotificationService
     /**
      * Send a WhatsApp text message via Meta Cloud API.
      * Returns true on success, false on failure/not-configured.
+     * Note: free-form text only delivers inside the 24h customer-care window.
      */
     private function sendWhatsApp(string $phone, string $text): bool
     {
@@ -341,16 +501,81 @@ class NotificationService
         }
 
         $normalized = $this->normalizePhone($phone);
+        // Meta Graph API expects digits only (no leading +)
+        $to = ltrim($normalized, '+');
         $url        = "https://graph.facebook.com/v21.0/{$phoneId}/messages";
 
         $payload = json_encode([
             'messaging_product' => 'whatsapp',
             'recipient_type'    => 'individual',
-            'to'                => $normalized,
+            'to'                => $to,
             'type'              => 'text',
-            'text'              => ['preview_url' => false, 'body' => $text],
+            'text'              => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
         ]);
 
+        return $this->postWhatsApp($url, $token, $payload, $to, 'text');
+    }
+
+    /**
+     * Send an approved WhatsApp template (required to start / re-engage conversations).
+     * Default Meta test template: hello_world (no body params).
+     */
+    private function sendWhatsAppTemplate(string $phone, string $fallbackText = '', ?array $bodyParams = null): bool
+    {
+        $token   = config('services.whatsapp.token');
+        $phoneId = config('services.whatsapp.phone_number_id');
+        $name    = config('services.whatsapp.template_name', 'hello_world');
+        $lang    = config('services.whatsapp.template_lang', 'en_US');
+        $paramCount = (int) config('services.whatsapp.template_body_params', 0);
+
+        if (!$token || !$phoneId || str_contains($token, 'YOUR_') || !$name) {
+            Log::info('WhatsApp template skipped — not configured');
+            return false;
+        }
+
+        $to = ltrim($this->normalizePhone($phone), '+');
+        $url = "https://graph.facebook.com/v21.0/{$phoneId}/messages";
+
+        $template = [
+            'name' => $name,
+            'language' => ['code' => $lang],
+        ];
+
+        $params = [];
+        if (is_array($bodyParams) && count($bodyParams) > 0) {
+            foreach ($bodyParams as $value) {
+                $text = trim(preg_replace('/\s+/', ' ', (string) $value) ?? (string) $value);
+                $params[] = ['type' => 'text', 'text' => mb_substr($text !== '' ? $text : '-', 0, 1024)];
+            }
+        } elseif ($paramCount > 0 && $fallbackText !== '') {
+            $primary = trim(preg_replace('/\s+/', ' ', $fallbackText) ?? $fallbackText);
+            $primary = mb_substr($primary, 0, 1024);
+            for ($i = 0; $i < $paramCount; $i++) {
+                $params[] = [
+                    'type' => 'text',
+                    'text' => $i === 0 ? $primary : '-',
+                ];
+            }
+        }
+
+        if ($params !== []) {
+            $template['components'] = [
+                ['type' => 'body', 'parameters' => $params],
+            ];
+        }
+
+        $payload = json_encode([
+            'messaging_product' => 'whatsapp',
+            'to' => $to,
+            'type' => 'template',
+            'template' => $template,
+        ]);
+
+        return $this->postWhatsApp($url, $token, $payload, $to, 'template:'.$name);
+    }
+
+    private function postWhatsApp(string $url, string $token, string $payload, string $to, string $kind): bool
+    {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -369,19 +594,20 @@ class NotificationService
         curl_close($ch);
 
         if ($curlErr) {
-            Log::error("WhatsApp cURL error to {$normalized}: {$curlErr}");
+            Log::error("WhatsApp cURL error ({$kind}) to {$to}: {$curlErr}");
             return false;
         }
 
         $decoded = json_decode($response, true);
 
         if ($httpCode === 200 && isset($decoded['messages'][0]['id'])) {
-            Log::info("WhatsApp sent to {$normalized} (msg_id: {$decoded['messages'][0]['id']})");
+            Log::info("WhatsApp {$kind} sent to {$to} (msg_id: {$decoded['messages'][0]['id']})");
             return true;
         }
 
         $errMsg = $decoded['error']['message'] ?? $response;
-        Log::warning("WhatsApp failed to {$normalized} (HTTP {$httpCode}): {$errMsg}");
+        $errCode = $decoded['error']['code'] ?? null;
+        Log::warning("WhatsApp {$kind} failed to {$to} (HTTP {$httpCode}" . ($errCode ? ", code {$errCode}" : '') . "): {$errMsg}");
         return false;
     }
 

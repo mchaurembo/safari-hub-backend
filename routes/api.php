@@ -125,6 +125,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/complaints', [App\Http\Controllers\Api\AdminController::class, 'complaints']);
     Route::post('/admin/complaints/{complaint}/resolve', [App\Http\Controllers\Api\AdminController::class, 'resolveComplaint']);
 
-    // Garage Module (scaffold)
+    // Garage Module — Phase 1
     Route::get('/garage/ping', [App\Http\Controllers\Api\GarageController::class, 'ping']);
+    Route::get('/garage/dashboard', [App\Http\Controllers\Api\GarageController::class, 'dashboard']);
+    Route::get('/garage/profile', [App\Http\Controllers\Api\GarageController::class, 'showGarage']);
+    Route::put('/garage/profile', [App\Http\Controllers\Api\GarageController::class, 'updateGarage']);
+
+    Route::get('/garage/services', [App\Http\Controllers\Api\GarageController::class, 'services']);
+    Route::post('/garage/services', [App\Http\Controllers\Api\GarageController::class, 'storeService']);
+    Route::put('/garage/services/{service}', [App\Http\Controllers\Api\GarageController::class, 'updateService']);
+    Route::delete('/garage/services/{service}', [App\Http\Controllers\Api\GarageController::class, 'destroyService']);
+
+    Route::get('/garage/technicians', [App\Http\Controllers\Api\GarageController::class, 'technicians']);
+    Route::post('/garage/technicians', [App\Http\Controllers\Api\GarageController::class, 'storeTechnician']);
+    Route::put('/garage/technicians/{technician}', [App\Http\Controllers\Api\GarageController::class, 'updateTechnician']);
+
+    Route::get('/garage/customers', [App\Http\Controllers\Api\GarageController::class, 'customers']);
+    Route::put('/garage/customers/{customer}', [App\Http\Controllers\Api\GarageController::class, 'updateCustomer']);
+    Route::get('/garage/bookings', [App\Http\Controllers\Api\GarageController::class, 'bookings']);
+    Route::post('/garage/bookings', [App\Http\Controllers\Api\GarageController::class, 'storeBooking']);
+    Route::put('/garage/bookings/{booking}', [App\Http\Controllers\Api\GarageController::class, 'updateBooking']);
 });

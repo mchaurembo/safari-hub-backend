@@ -23,5 +23,10 @@ class Technician extends Model
     {
         return $this->belongsTo(Garage::class, 'garage_id');
     }
+
+    public function bookings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(GarageBooking::class);
+    }
 }
 

@@ -24,5 +24,15 @@ class Garage extends Model
     {
         return $this->hasMany(Technician::class);
     }
+
+    public function services(): HasMany
+    {
+        return $this->hasMany(GarageService::class);
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(GarageBooking::class);
+    }
 }
 
