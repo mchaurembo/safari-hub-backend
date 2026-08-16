@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\PhoneHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Garage;
 use App\Models\GarageBooking;
@@ -10,6 +11,7 @@ use App\Models\Role;
 use App\Models\Technician;
 use App\Models\User;
 use App\Services\NotificationService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -421,26 +423,23 @@ class GarageController extends Controller
 
         $service = GarageService::findOrFail($validated['service_id']);
 
-        $customerId = $validated['customer_id'] ?? null;
-        if (! $customerId) {
-            $customerRole = Role::firstOrCreate(['name' => 'customer']);
-            $customer = User::firstOrCreate(
-                ['email' => strtolower($validated['customer_email'])],
-                [
-                    'name' => $validated['customer_name'],
-                    'phone' => $validated['customer_phone'] ?? null,
-                    'whatsapp_number' => $validated['customer_phone'] ?? null,
-                    'password' => Hash::make('password'),
-                    'role_id' => $customerRole->id,
-                    'status' => 'active',
-                ]
-            );
-            // Keep WhatsApp reachable if phone was added later on an existing account
-            if (! empty($validated['customer_phone']) && ! $customer->whatsapp_number) {
-                $customer->update(['whatsapp_number' => $validated['customer_phone']]);
+        try {
+            $customerId = $validated['customer_id']
+                ?? $this->resolveCustomerForBooking(
+                    name: $validated['customer_name'] ?? 'Customer',
+                    email: $validated['customer_email'] ?? null,
+                    phone: $validated['customer_phone'] ?? null,
+                )->id;
+        } catch (QueryException $e) {
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'already registered') || str_contains($msg, 'Duplicate')) {
+                return response()->json([
+                    'message' => 'This phone or email is already registered to another account. Select the customer from your list, or use a different phone/email.',
+                ], 422);
             }
-            $customer->roles()->syncWithoutDetaching([$customerRole->id]);
-            $customerId = $customer->id;
+            Log::error('Garage booking customer resolve failed', ['error' => $msg]);
+
+            return response()->json(['message' => 'Could not save customer details.'], 500);
         }
 
         $status = $validated['status'] ?? 'pending';
@@ -448,21 +447,106 @@ class GarageController extends Controller
             $status = 'assigned';
         }
 
-        $booking = GarageBooking::create([
-            'customer_id' => $customerId,
-            'garage_id' => $garage->id,
-            'service_id' => $service->id,
-            'technician_id' => $validated['technician_id'] ?? null,
-            'vehicle_reg' => $validated['vehicle_reg'] ?? null,
-            'notes' => $validated['notes'] ?? null,
-            'amount' => $service->price,
-            'status' => $status,
-            'scheduled_at' => $validated['scheduled_at'] ?? now()->addDay(),
-        ]);
+        try {
+            $booking = GarageBooking::create([
+                'customer_id' => $customerId,
+                'garage_id' => $garage->id,
+                'service_id' => $service->id,
+                'technician_id' => $validated['technician_id'] ?? null,
+                'vehicle_reg' => $validated['vehicle_reg'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+                'amount' => $service->price,
+                'status' => $status,
+                'scheduled_at' => $validated['scheduled_at'] ?? now()->addDay(),
+            ]);
+        } catch (QueryException $e) {
+            Log::error('Garage booking create failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['message' => 'Could not create booking.'], 500);
+        }
 
         return response()->json([
             'booking' => $booking->load(['customer:id,name,email,phone', 'service', 'technician.user:id,name']),
         ], 201);
+    }
+
+    /**
+     * Find or create a customer user without violating global phone uniqueness triggers.
+     */
+    private function resolveCustomerForBooking(string $name, ?string $email, ?string $phone): User
+    {
+        $email = $email ? strtolower(trim($email)) : null;
+        $normalizedPhone = PhoneHelper::normalize($phone);
+
+        $customer = null;
+        if ($email) {
+            $customer = User::where('email', $email)->first();
+        }
+        if (! $customer && $normalizedPhone) {
+            $customer = User::where('phone', $normalizedPhone)
+                ->orWhere('whatsapp_number', $normalizedPhone)
+                ->first();
+        }
+
+        $customerRole = Role::firstOrCreate(['name' => 'customer']);
+
+        if ($customer) {
+            $updates = [];
+            if ($name && $customer->name !== $name) {
+                $updates['name'] = $name;
+            }
+            // Only set phone/whatsapp when free or already owned by this user
+            if ($normalizedPhone) {
+                $phoneTaken = User::where('id', '!=', $customer->id)
+                    ->where(function ($q) use ($normalizedPhone) {
+                        $q->where('phone', $normalizedPhone)
+                            ->orWhere('whatsapp_number', $normalizedPhone);
+                    })
+                    ->exists();
+                if (! $phoneTaken) {
+                    if (! $customer->phone) {
+                        $updates['phone'] = $normalizedPhone;
+                    }
+                    if (! $customer->whatsapp_number) {
+                        $updates['whatsapp_number'] = $normalizedPhone;
+                    }
+                }
+            }
+            if ($updates !== []) {
+                $customer->update($updates);
+            }
+            $customer->roles()->syncWithoutDetaching([$customerRole->id]);
+
+            return $customer->fresh();
+        }
+
+        // New user: omit phone if another account already owns it
+        $attrs = [
+            'name' => $name,
+            'password' => Hash::make('password'),
+            'role_id' => $customerRole->id,
+            'status' => 'active',
+        ];
+        if ($email) {
+            $attrs['email'] = $email;
+        } else {
+            $attrs['email'] = 'garage-customer-'.uniqid('', true).'@safarihub.local';
+        }
+
+        if ($normalizedPhone) {
+            $phoneTaken = User::where('phone', $normalizedPhone)
+                ->orWhere('whatsapp_number', $normalizedPhone)
+                ->exists();
+            if (! $phoneTaken) {
+                $attrs['phone'] = $normalizedPhone;
+                $attrs['whatsapp_number'] = $normalizedPhone;
+            }
+        }
+
+        $customer = User::create($attrs);
+        $customer->roles()->syncWithoutDetaching([$customerRole->id]);
+
+        return $customer;
     }
 
     public function updateBooking(Request $request, GarageBooking $booking): JsonResponse
