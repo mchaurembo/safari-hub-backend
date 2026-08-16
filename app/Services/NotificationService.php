@@ -372,8 +372,18 @@ class NotificationService
 
         $waPhone = $whatsappNumber ?: $phone;
         if ($waPhone) {
-            // Prefer professional safari_hub_garage_update (when Meta status=APPROVED).
-            $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, $whatsappBodyParams);
+        // Map 5 garage fields into jaspers {{1}} {{2}} {{3}} when that template is active
+        $templateParams = $whatsappBodyParams;
+        if (is_array($whatsappBodyParams) && count($whatsappBodyParams) >= 5
+            && config('services.whatsapp.template_name') === 'jaspers_market_order_confirmation_v1') {
+            $templateParams = [
+                $whatsappBodyParams[0],
+                $whatsappBodyParams[2].' — '.$whatsappBodyParams[3],
+                $whatsappBodyParams[1].'. '.$whatsappBodyParams[4],
+            ];
+        }
+
+        $sent = $this->sendWhatsAppTemplate($waPhone, $smsText, $templateParams);
 
             // While custom template is PENDING, use approved sample with service details (not hello_world).
             if (! $sent) {
@@ -543,9 +553,14 @@ class NotificationService
 
         $params = [];
         if (is_array($bodyParams) && count($bodyParams) > 0) {
-            foreach ($bodyParams as $value) {
+            $limit = $paramCount > 0 ? $paramCount : count($bodyParams);
+            foreach (array_slice($bodyParams, 0, $limit) as $value) {
                 $text = trim(preg_replace('/\s+/', ' ', (string) $value) ?? (string) $value);
                 $params[] = ['type' => 'text', 'text' => mb_substr($text !== '' ? $text : '-', 0, 1024)];
+            }
+            // Pad if template expects more params than provided
+            while ($paramCount > 0 && count($params) < $paramCount) {
+                $params[] = ['type' => 'text', 'text' => '-'];
             }
         } elseif ($paramCount > 0 && $fallbackText !== '') {
             $primary = trim(preg_replace('/\s+/', ' ', $fallbackText) ?? $fallbackText);
