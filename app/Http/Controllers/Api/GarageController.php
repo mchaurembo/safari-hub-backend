@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\NameHelper;
 use App\Helpers\PhoneHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Garage;
@@ -352,6 +353,9 @@ class GarageController extends Controller
         if (array_key_exists('email', $validated)) {
             $validated['email'] = strtolower($validated['email']);
         }
+        if (array_key_exists('name', $validated)) {
+            $validated['name'] = NameHelper::personName($validated['name']);
+        }
 
         $customer->update($validated);
 
@@ -426,7 +430,7 @@ class GarageController extends Controller
         try {
             $customerId = $validated['customer_id']
                 ?? $this->resolveCustomerForBooking(
-                    name: $validated['customer_name'] ?? 'Customer',
+                    name: NameHelper::personName($validated['customer_name'] ?? 'Customer'),
                     email: $validated['customer_email'] ?? null,
                     phone: $validated['customer_phone'] ?? null,
                 )->id;
@@ -475,6 +479,7 @@ class GarageController extends Controller
      */
     private function resolveCustomerForBooking(string $name, ?string $email, ?string $phone): User
     {
+        $name = NameHelper::personName($name) ?: 'Customer';
         $email = $email ? strtolower(trim($email)) : null;
         $normalizedPhone = PhoneHelper::normalize($phone);
 
