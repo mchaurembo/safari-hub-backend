@@ -1,21 +1,42 @@
 <?php
 
+use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\CargoController;
+use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\DriverController;
+use App\Http\Controllers\Api\GarageController;
+use App\Http\Controllers\Api\JobController;
+use App\Http\Controllers\Api\OwnerController;
+use App\Http\Controllers\Api\Payments\AdminPaymentController;
+use App\Http\Controllers\Api\Payments\PaymentController;
+use App\Http\Controllers\Api\Payments\PaymentWebhookController;
+use App\Http\Controllers\Api\RouteController;
+use App\Http\Controllers\Api\TripController;
+use App\Http\Controllers\Api\VehicleController;
+use App\Http\Controllers\Api\WorkOrderController;
+use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Auth
-Route::post('/register', [App\Http\Controllers\Api\AuthController::class, 'register']);
-Route::post('/login',    [App\Http\Controllers\Api\AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
 
 // Password reset via OTP — throttled: 10 requests per minute per IP
 Route::middleware('throttle:10,1')->group(function () {
-    Route::post('/forgot-password', [App\Http\Controllers\Api\AuthController::class, 'forgotPassword']);
-    Route::post('/reset-password',  [App\Http\Controllers\Api\AuthController::class, 'resetPassword']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // Debug (remove after fixing)
-Route::get('/debug/owner-status/{email}', function (\Illuminate\Http\Request $request, $email) {
-    $user = \App\Models\User::with(['role', 'transportOwner'])->where('email', $email)->first();
-    if (!$user) return response()->json(['error' => 'User not found']);
+Route::get('/debug/owner-status/{email}', function (Request $request, $email) {
+    $user = User::with(['role', 'transportOwner'])->where('email', $email)->first();
+    if (! $user) {
+        return response()->json(['error' => 'User not found']);
+    }
+
     return response()->json([
         'user_id' => $user->id,
         'email' => $user->email,
@@ -25,136 +46,162 @@ Route::get('/debug/owner-status/{email}', function (\Illuminate\Http\Request $re
 });
 
 // Public
-Route::get('/routes', [App\Http\Controllers\Api\RouteController::class, 'index']);
-Route::get('/trips', [App\Http\Controllers\Api\TripController::class, 'index']);
-Route::get('/trips/{trip}', [App\Http\Controllers\Api\TripController::class, 'show']);
+Route::get('/routes', [RouteController::class, 'index']);
+Route::get('/trips', [TripController::class, 'index']);
+Route::get('/trips/{trip}', [TripController::class, 'show']);
+
+// Public payment webhooks (signature-verified per provider)
+Route::post('/payments/webhooks/{provider}', PaymentWebhookController::class)
+    ->middleware('throttle:60,1');
+Route::match(['get', 'post'], '/payments/stub-checkout/{paymentReference}', [PaymentWebhookController::class, 'stubComplete'])
+    ->middleware('throttle:30,1');
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout',          [App\Http\Controllers\Api\AuthController::class, 'logout']);
-    Route::get('/user',             [App\Http\Controllers\Api\AuthController::class, 'user']);
-    Route::get('/me',               [App\Http\Controllers\Api\AuthController::class, 'me']);
-    Route::put('/profile',          [App\Http\Controllers\Api\AuthController::class, 'updateProfile']);
-    Route::put('/user/password',    [App\Http\Controllers\Api\AuthController::class, 'changePassword']);
-    Route::post('/change-password', [App\Http\Controllers\Api\AuthController::class, 'changePassword']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user', [AuthController::class, 'user']);
+    Route::get('/me', [AuthController::class, 'me']);
+    Route::put('/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/user/password', [AuthController::class, 'changePassword']);
+    Route::post('/change-password', [AuthController::class, 'changePassword']);
 
-    // Capability enrollment (canonical). /roles/enroll kept as alias.
-    Route::post('/capabilities/enroll', [App\Http\Controllers\Api\AuthController::class, 'enrollRole']);
-    Route::post('/roles/enroll',   [App\Http\Controllers\Api\AuthController::class, 'enrollRole']);
+    // Capability enrollment (canonical). /roles/* kept as aliases.
+    Route::post('/capabilities/enroll', [AuthController::class, 'enrollRole']);
+    Route::post('/roles/enroll', [AuthController::class, 'enrollRole']);
+    Route::post('/capabilities/unenroll', [AuthController::class, 'unenrollRole']);
+    Route::post('/roles/unenroll', [AuthController::class, 'unenrollRole']);
 
     // Customer
-    Route::get('/my-bookings', [App\Http\Controllers\Api\BookingController::class, 'myBookings']);
-    Route::post('/bookings', [App\Http\Controllers\Api\BookingController::class, 'store']);
-    Route::post('/bookings/{booking}/cancel', [App\Http\Controllers\Api\BookingController::class, 'cancel']);
+    Route::get('/my-bookings', [BookingController::class, 'myBookings']);
+    Route::post('/bookings', [BookingController::class, 'store']);
+    Route::post('/bookings/{booking}/cancel', [BookingController::class, 'cancel']);
 
     // Owner
-    Route::post('/vehicles/{vehicle}/assign-driver', [App\Http\Controllers\Api\VehicleController::class, 'assignDriver']);
-    Route::delete('/vehicles/{vehicle}/unassign-driver/{driver}', [App\Http\Controllers\Api\VehicleController::class, 'unassignDriver']);
-    Route::apiResource('/vehicles', App\Http\Controllers\Api\VehicleController::class)->except(['index', 'show']);
-    Route::apiResource('/drivers', App\Http\Controllers\Api\DriverController::class)->except(['index', 'show']);
-    Route::post('/trips', [App\Http\Controllers\Api\TripController::class, 'store']);
-    Route::post('/routes', [App\Http\Controllers\Api\RouteController::class, 'store']);
-    Route::post('/owner/profile', [App\Http\Controllers\Api\OwnerController::class, 'saveProfile']);
-    Route::get('/owner/vehicles', [App\Http\Controllers\Api\OwnerController::class, 'vehicles']);
-    Route::get('/owner/drivers', [App\Http\Controllers\Api\OwnerController::class, 'drivers']);
-    Route::get('/owner/trips', [App\Http\Controllers\Api\OwnerController::class, 'trips']);
-    Route::get('/owner/revenue', [App\Http\Controllers\Api\OwnerController::class, 'revenue']);
-    Route::get('/owner/cargo-trips', [App\Http\Controllers\Api\OwnerController::class, 'cargoTrips']);
-    Route::get('/owner/earnings', [App\Http\Controllers\Api\OwnerController::class, 'earnings']);
+    Route::post('/vehicles/{vehicle}/assign-driver', [VehicleController::class, 'assignDriver']);
+    Route::delete('/vehicles/{vehicle}/unassign-driver/{driver}', [VehicleController::class, 'unassignDriver']);
+    Route::apiResource('/vehicles', VehicleController::class)->except(['index', 'show']);
+    Route::apiResource('/drivers', DriverController::class)->except(['index', 'show']);
+    Route::post('/trips', [TripController::class, 'store']);
+    Route::post('/routes', [RouteController::class, 'store']);
+    Route::post('/owner/profile', [OwnerController::class, 'saveProfile']);
+    Route::get('/owner/vehicles', [OwnerController::class, 'vehicles']);
+    Route::get('/owner/drivers', [OwnerController::class, 'drivers']);
+    Route::get('/owner/trips', [OwnerController::class, 'trips']);
+    Route::get('/owner/revenue', [OwnerController::class, 'revenue']);
+    Route::get('/owner/cargo-trips', [OwnerController::class, 'cargoTrips']);
+    Route::get('/owner/earnings', [OwnerController::class, 'earnings']);
 
     // Owner - search available drivers
-    Route::get('/owner/available-drivers', [App\Http\Controllers\Api\OwnerController::class, 'availableDrivers']);
+    Route::get('/owner/available-drivers', [OwnerController::class, 'availableDrivers']);
 
     // Cargo — public nearby drivers (customer uses before login too)
-    Route::get('/cargo/nearby-drivers', [App\Http\Controllers\Api\CargoController::class, 'nearbyDrivers']);
+    Route::get('/cargo/nearby-drivers', [CargoController::class, 'nearbyDrivers']);
 
     // Cargo — customer
-    Route::post('/cargo/requests', [App\Http\Controllers\Api\CargoController::class, 'store']);
-    Route::get('/cargo/my-requests', [App\Http\Controllers\Api\CargoController::class, 'myRequests']);
-    Route::post('/cargo/requests/{cargo}/accept-quote', [App\Http\Controllers\Api\CargoController::class, 'acceptQuote']);
-    Route::post('/cargo/requests/{cargo}/decline-quote', [App\Http\Controllers\Api\CargoController::class, 'declineQuote']);
-    Route::post('/cargo/requests/{cargo}/cancel', [App\Http\Controllers\Api\CargoController::class, 'cancel']);
-    Route::post('/cargo/requests/{cargo}/confirm-delivery', [App\Http\Controllers\Api\CargoController::class, 'confirmDelivery']);
+    Route::post('/cargo/requests', [CargoController::class, 'store']);
+    Route::get('/cargo/my-requests', [CargoController::class, 'myRequests']);
+    Route::post('/cargo/requests/{cargo}/accept-quote', [CargoController::class, 'acceptQuote']);
+    Route::post('/cargo/requests/{cargo}/decline-quote', [CargoController::class, 'declineQuote']);
+    Route::post('/cargo/requests/{cargo}/cancel', [CargoController::class, 'cancel']);
+    Route::post('/cargo/requests/{cargo}/confirm-delivery', [CargoController::class, 'confirmDelivery']);
 
     // Cargo — driver
-    Route::get('/cargo/driver-requests', [App\Http\Controllers\Api\CargoController::class, 'driverRequests']);
-    Route::post('/cargo/requests/{cargo}/quote', [App\Http\Controllers\Api\CargoController::class, 'quote']);
-    Route::post('/cargo/requests/{cargo}/start', [App\Http\Controllers\Api\CargoController::class, 'startTrip']);
-    Route::post('/cargo/requests/{cargo}/deliver', [App\Http\Controllers\Api\CargoController::class, 'markDelivered']);
-    Route::post('/driver/location', [App\Http\Controllers\Api\CargoController::class, 'updateLocation']);
+    Route::get('/cargo/driver-requests', [CargoController::class, 'driverRequests']);
+    Route::post('/cargo/requests/{cargo}/quote', [CargoController::class, 'quote']);
+    Route::post('/cargo/requests/{cargo}/start', [CargoController::class, 'startTrip']);
+    Route::post('/cargo/requests/{cargo}/deliver', [CargoController::class, 'markDelivered']);
+    Route::post('/driver/location', [CargoController::class, 'updateLocation']);
 
     // Driver
-    Route::get('/driver/trips', [App\Http\Controllers\Api\DriverController::class, 'myTrips']);
-    Route::post('/trips/{trip}/start', [App\Http\Controllers\Api\TripController::class, 'start']);
-    Route::post('/trips/{trip}/end', [App\Http\Controllers\Api\TripController::class, 'end']);
-    Route::get('/trips/{trip}/passengers', [App\Http\Controllers\Api\TripController::class, 'passengers']);
+    Route::get('/driver/trips', [DriverController::class, 'myTrips']);
+    Route::post('/trips/{trip}/start', [TripController::class, 'start']);
+    Route::post('/trips/{trip}/end', [TripController::class, 'end']);
+    Route::get('/trips/{trip}/passengers', [TripController::class, 'passengers']);
 
     // Driver Documents
-    Route::get('/driver/documents', [App\Http\Controllers\Api\DocumentController::class, 'index']);
-    Route::get('/driver/documents/{document}/file', [App\Http\Controllers\Api\DocumentController::class, 'file']);
-    Route::post('/driver/documents', [App\Http\Controllers\Api\DocumentController::class, 'store']);
-    Route::delete('/driver/documents/{document}', [App\Http\Controllers\Api\DocumentController::class, 'destroy']);
+    Route::get('/driver/documents', [DocumentController::class, 'index']);
+    Route::get('/driver/documents/{document}/file', [DocumentController::class, 'file']);
+    Route::post('/driver/documents', [DocumentController::class, 'store']);
+    Route::delete('/driver/documents/{document}', [DocumentController::class, 'destroy']);
 
     // Jobs — Owner
-    Route::get('/owner/documents/{document}/file', [App\Http\Controllers\Api\DocumentController::class, 'ownerFile']);
-    Route::get('/owner/job-postings', [App\Http\Controllers\Api\JobController::class, 'ownerPostings']);
-    Route::post('/owner/job-postings', [App\Http\Controllers\Api\JobController::class, 'createPosting']);
-    Route::put('/owner/job-postings/{posting}', [App\Http\Controllers\Api\JobController::class, 'updatePosting']);
-    Route::delete('/owner/job-postings/{posting}', [App\Http\Controllers\Api\JobController::class, 'deletePosting']);
-    Route::get('/owner/job-postings/{posting}/applications', [App\Http\Controllers\Api\JobController::class, 'postingApplications']);
-    Route::post('/owner/applications/{application}/review', [App\Http\Controllers\Api\JobController::class, 'reviewApplication']);
+    Route::get('/owner/documents/{document}/file', [DocumentController::class, 'ownerFile']);
+    Route::get('/owner/job-postings', [JobController::class, 'ownerPostings']);
+    Route::post('/owner/job-postings', [JobController::class, 'createPosting']);
+    Route::put('/owner/job-postings/{posting}', [JobController::class, 'updatePosting']);
+    Route::delete('/owner/job-postings/{posting}', [JobController::class, 'deletePosting']);
+    Route::get('/owner/job-postings/{posting}/applications', [JobController::class, 'postingApplications']);
+    Route::post('/owner/applications/{application}/review', [JobController::class, 'reviewApplication']);
 
     // Jobs — Driver
-    Route::get('/jobs', [App\Http\Controllers\Api\JobController::class, 'browsePostings']);
-    Route::post('/jobs/{posting}/apply', [App\Http\Controllers\Api\JobController::class, 'applyToPosting']);
-    Route::get('/driver/applications', [App\Http\Controllers\Api\JobController::class, 'myApplications']);
-    Route::put('/driver/applications/{application}', [App\Http\Controllers\Api\JobController::class, 'updateApplication']);
-    Route::delete('/driver/applications/{application}', [App\Http\Controllers\Api\JobController::class, 'withdrawApplication']);
+    Route::get('/jobs', [JobController::class, 'browsePostings']);
+    Route::post('/jobs/{posting}/apply', [JobController::class, 'applyToPosting']);
+    Route::get('/driver/applications', [JobController::class, 'myApplications']);
+    Route::put('/driver/applications/{application}', [JobController::class, 'updateApplication']);
+    Route::delete('/driver/applications/{application}', [JobController::class, 'withdrawApplication']);
 
     // Admin
-    Route::get('/admin/users', [App\Http\Controllers\Api\AdminController::class, 'users']);
-    Route::post('/admin/users', [App\Http\Controllers\Api\AdminController::class, 'createUser']);
-    Route::put('/admin/users/{user}', [App\Http\Controllers\Api\AdminController::class, 'updateUser']);
-    Route::post('/admin/users/{user}/status', [App\Http\Controllers\Api\AdminController::class, 'updateUserStatus']);
-    Route::post('/admin/users/{user}/roles', [App\Http\Controllers\Api\AdminController::class, 'addUserRole']);
-    Route::delete('/admin/users/{user}/roles/{role}', [App\Http\Controllers\Api\AdminController::class, 'removeUserRole']);
-    Route::delete('/admin/users/{user}', [App\Http\Controllers\Api\AdminController::class, 'deleteUser']);
-    Route::get('/admin/transport-owners', [App\Http\Controllers\Api\AdminController::class, 'transportOwners']);
-    Route::get('/admin/garages', [App\Http\Controllers\Api\AdminController::class, 'garages']);
-    Route::get('/admin/reports', [App\Http\Controllers\Api\AdminController::class, 'reports']);
-    Route::post('/admin/approve-owner/{transportOwner}', [App\Http\Controllers\Api\AdminController::class, 'approveOwner']);
-    Route::post('/admin/approve-owner-by-user/{user}', [App\Http\Controllers\Api\AdminController::class, 'approveOwnerByUser']);
-    Route::get('/admin/complaints', [App\Http\Controllers\Api\AdminController::class, 'complaints']);
-    Route::post('/admin/complaints/{complaint}/resolve', [App\Http\Controllers\Api\AdminController::class, 'resolveComplaint']);
+    Route::get('/admin/users', [AdminController::class, 'users']);
+    Route::post('/admin/users', [AdminController::class, 'createUser']);
+    Route::put('/admin/users/{user}', [AdminController::class, 'updateUser']);
+    Route::post('/admin/users/{user}/status', [AdminController::class, 'updateUserStatus']);
+    Route::post('/admin/users/{user}/roles', [AdminController::class, 'addUserRole']);
+    Route::delete('/admin/users/{user}/roles/{role}', [AdminController::class, 'removeUserRole']);
+    Route::delete('/admin/users/{user}', [AdminController::class, 'deleteUser']);
+    Route::get('/admin/transport-owners', [AdminController::class, 'transportOwners']);
+    Route::get('/admin/garages', [AdminController::class, 'garages']);
+    Route::get('/admin/reports', [AdminController::class, 'reports']);
+    Route::post('/admin/approve-owner/{transportOwner}', [AdminController::class, 'approveOwner']);
+    Route::post('/admin/approve-owner-by-user/{user}', [AdminController::class, 'approveOwnerByUser']);
+    Route::get('/admin/complaints', [AdminController::class, 'complaints']);
+    Route::post('/admin/complaints/{complaint}/resolve', [AdminController::class, 'resolveComplaint']);
+
+    // Payments — customer
+    Route::get('/payments/methods', [PaymentController::class, 'methods']);
+    Route::post('/payments', [PaymentController::class, 'store']);
+    Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+    Route::post('/payments/{payment}/retry', [PaymentController::class, 'retry']);
+    Route::get('/payments/{payment}/receipt', [PaymentController::class, 'receipt']);
+
+    // Payments — admin
+    Route::get('/admin/payments/dashboard', [AdminPaymentController::class, 'dashboard']);
+    Route::post('/admin/payments/expire-stale', [AdminPaymentController::class, 'expireStale']);
+    Route::get('/admin/payments', [AdminPaymentController::class, 'index']);
+    Route::get('/admin/payments/{payment}', [AdminPaymentController::class, 'show']);
+    Route::get('/admin/refunds', [AdminPaymentController::class, 'refunds']);
+    Route::post('/admin/payments/{payment}/refunds', [AdminPaymentController::class, 'requestRefund']);
+    Route::get('/admin/payouts', [AdminPaymentController::class, 'payouts']);
+    Route::post('/admin/payouts', [AdminPaymentController::class, 'createPayout']);
+    Route::post('/admin/payouts/{payout}/process', [AdminPaymentController::class, 'processPayout']);
 
     // Garage Module — Phase 1
-    Route::get('/garage/ping', [App\Http\Controllers\Api\GarageController::class, 'ping']);
-    Route::get('/garage/directory', [App\Http\Controllers\Api\GarageController::class, 'directory']);
-    Route::post('/garage', [App\Http\Controllers\Api\GarageController::class, 'createGarage']);
-    Route::post('/garage/join', [App\Http\Controllers\Api\GarageController::class, 'joinAsTechnician']);
-    Route::get('/garage/dashboard', [App\Http\Controllers\Api\GarageController::class, 'dashboard']);
-    Route::get('/garage/profile', [App\Http\Controllers\Api\GarageController::class, 'showGarage']);
-    Route::put('/garage/profile', [App\Http\Controllers\Api\GarageController::class, 'updateGarage']);
+    Route::get('/garage/ping', [GarageController::class, 'ping']);
+    Route::get('/garage/directory', [GarageController::class, 'directory']);
+    Route::post('/garage', [GarageController::class, 'createGarage']);
+    Route::post('/garage/join', [GarageController::class, 'joinAsTechnician']);
+    Route::get('/garage/dashboard', [GarageController::class, 'dashboard']);
+    Route::get('/garage/profile', [GarageController::class, 'showGarage']);
+    Route::put('/garage/profile', [GarageController::class, 'updateGarage']);
 
-    Route::get('/garage/services', [App\Http\Controllers\Api\GarageController::class, 'services']);
-    Route::post('/garage/services', [App\Http\Controllers\Api\GarageController::class, 'storeService']);
-    Route::put('/garage/services/{service}', [App\Http\Controllers\Api\GarageController::class, 'updateService']);
-    Route::delete('/garage/services/{service}', [App\Http\Controllers\Api\GarageController::class, 'destroyService']);
+    Route::get('/garage/services', [GarageController::class, 'services']);
+    Route::post('/garage/services', [GarageController::class, 'storeService']);
+    Route::put('/garage/services/{service}', [GarageController::class, 'updateService']);
+    Route::delete('/garage/services/{service}', [GarageController::class, 'destroyService']);
 
-    Route::get('/garage/technicians', [App\Http\Controllers\Api\GarageController::class, 'technicians']);
-    Route::post('/garage/technicians', [App\Http\Controllers\Api\GarageController::class, 'storeTechnician']);
-    Route::put('/garage/technicians/{technician}', [App\Http\Controllers\Api\GarageController::class, 'updateTechnician']);
+    Route::get('/garage/technicians', [GarageController::class, 'technicians']);
+    Route::post('/garage/technicians', [GarageController::class, 'storeTechnician']);
+    Route::put('/garage/technicians/{technician}', [GarageController::class, 'updateTechnician']);
 
-    Route::get('/garage/customers', [App\Http\Controllers\Api\GarageController::class, 'customers']);
-    Route::put('/garage/customers/{customer}', [App\Http\Controllers\Api\GarageController::class, 'updateCustomer']);
-    Route::get('/garage/bookings', [App\Http\Controllers\Api\GarageController::class, 'bookings']);
-    Route::post('/garage/bookings', [App\Http\Controllers\Api\GarageController::class, 'storeBooking']);
-    Route::put('/garage/bookings/{booking}', [App\Http\Controllers\Api\GarageController::class, 'updateBooking']);
+    Route::get('/garage/customers', [GarageController::class, 'customers']);
+    Route::put('/garage/customers/{customer}', [GarageController::class, 'updateCustomer']);
+    Route::get('/garage/bookings', [GarageController::class, 'bookings']);
+    Route::post('/garage/bookings', [GarageController::class, 'storeBooking']);
+    Route::put('/garage/bookings/{booking}', [GarageController::class, 'updateBooking']);
 
-    Route::get('/garage/work-orders', [App\Http\Controllers\Api\WorkOrderController::class, 'index']);
-    Route::get('/garage/work-orders/{workOrder}', [App\Http\Controllers\Api\WorkOrderController::class, 'show']);
-    Route::post('/garage/work-orders/{workOrder}/start', [App\Http\Controllers\Api\WorkOrderController::class, 'start']);
-    Route::post('/garage/work-orders/{workOrder}/complete', [App\Http\Controllers\Api\WorkOrderController::class, 'complete']);
-    Route::post('/garage/work-orders/{workOrder}/items', [App\Http\Controllers\Api\WorkOrderController::class, 'addItem']);
-    Route::get('/service-history', [App\Http\Controllers\Api\WorkOrderController::class, 'serviceHistory']);
+    Route::get('/garage/work-orders', [WorkOrderController::class, 'index']);
+    Route::get('/garage/work-orders/{workOrder}', [WorkOrderController::class, 'show']);
+    Route::post('/garage/work-orders/{workOrder}/start', [WorkOrderController::class, 'start']);
+    Route::post('/garage/work-orders/{workOrder}/complete', [WorkOrderController::class, 'complete']);
+    Route::post('/garage/work-orders/{workOrder}/items', [WorkOrderController::class, 'addItem']);
+    Route::get('/service-history', [WorkOrderController::class, 'serviceHistory']);
 });

@@ -6,9 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\CargoRequest;
 use App\Models\Driver;
+use App\Models\JobApplication;
 use App\Models\Payment;
 use App\Models\TransportOwner;
+use App\Models\Trip;
+use App\Models\User;
 use App\Models\Vehicle;
+use App\Support\AuthUserPresenter;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +26,7 @@ class OwnerController extends Controller
     public function availableDrivers(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
@@ -36,7 +41,7 @@ class OwnerController extends Controller
             })
             ->pluck('user_id');
 
-        $applicantUserIds = \App\Models\JobApplication::query()
+        $applicantUserIds = JobApplication::query()
             ->where('status', 'pending')
             ->whereHas('posting', fn ($q) => $q->where('transport_owner_id', $owner->id))
             ->with('driver')
@@ -47,7 +52,7 @@ class OwnerController extends Controller
 
         $preferredIds = $seekerUserIds->merge($applicantUserIds)->unique()->values();
 
-        $query = \App\Models\User::query()
+        $query = User::query()
             ->where('status', 'active')
             ->whereNotIn('id', $existingDriverUserIds)
             ->where(function ($q) use ($search, $preferredIds) {
@@ -99,14 +104,14 @@ class OwnerController extends Controller
         return response()->json([
             'data' => $owner,
             'message' => 'Fleet profile saved. Awaiting admin approval.',
-            'user' => \App\Support\AuthUserPresenter::present($user->fresh()),
+            'user' => AuthUserPresenter::present($user->fresh()),
         ]);
     }
 
     public function vehicles(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
@@ -118,7 +123,7 @@ class OwnerController extends Controller
     public function drivers(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
@@ -130,12 +135,12 @@ class OwnerController extends Controller
     public function trips(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
-        $trips = \App\Models\Trip::with(['route', 'vehicle', 'driver.user'])
-            ->whereHas('vehicle', fn($q) => $q->where('owner_id', $owner->id))
+        $trips = Trip::with(['route', 'vehicle', 'driver.user'])
+            ->whereHas('vehicle', fn ($q) => $q->where('owner_id', $owner->id))
             ->orderByDesc('departure_time')
             ->get();
 
@@ -146,7 +151,7 @@ class OwnerController extends Controller
     public function cargoTrips(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
@@ -164,7 +169,7 @@ class OwnerController extends Controller
     public function earnings(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
@@ -183,21 +188,22 @@ class OwnerController extends Controller
         // Per-driver breakdown
         $byDriver = $completed->groupBy('driver_id')->map(function ($requests, $driverId) {
             $first = $requests->first();
+
             return [
-                'driver_id'   => $driverId,
+                'driver_id' => $driverId,
                 'driver_name' => $first->driver?->user?->name ?? 'Unknown',
-                'trips'       => $requests->count(),
-                'total'       => $requests->sum('quoted_price'),
-                'last_trip'   => $requests->max('updated_at'),
+                'trips' => $requests->count(),
+                'total' => $requests->sum('quoted_price'),
+                'last_trip' => $requests->max('updated_at'),
             ];
         })->values();
 
         // Monthly breakdown (last 6 months)
-        $monthly = $completed->groupBy(fn($r) => \Carbon\Carbon::parse($r->updated_at)->format('Y-m'))
-            ->map(fn($requests, $month) => [
-                'month'  => $month,
-                'trips'  => $requests->count(),
-                'total'  => $requests->sum('quoted_price'),
+        $monthly = $completed->groupBy(fn ($r) => Carbon::parse($r->updated_at)->format('Y-m'))
+            ->map(fn ($requests, $month) => [
+                'month' => $month,
+                'trips' => $requests->count(),
+                'total' => $requests->sum('quoted_price'),
             ])
             ->sortKeys()
             ->values();
@@ -206,8 +212,8 @@ class OwnerController extends Controller
             'data' => [
                 'total_earnings' => (float) $totalEarnings,
                 'completed_trips' => $completed->count(),
-                'by_driver'      => $byDriver,
-                'monthly'        => $monthly,
+                'by_driver' => $byDriver,
+                'monthly' => $monthly,
             ],
         ]);
     }
@@ -215,19 +221,19 @@ class OwnerController extends Controller
     public function revenue(Request $request): JsonResponse
     {
         $owner = $request->user()->transportOwner;
-        if (!$owner) {
+        if (! $owner) {
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
         try {
             $vehicleIds = Vehicle::where('owner_id', $owner->id)->pluck('id');
-            $tripIds = \App\Models\Trip::whereIn('vehicle_id', $vehicleIds)->pluck('id');
+            $tripIds = Trip::whereIn('vehicle_id', $vehicleIds)->pluck('id');
             $bookingIds = Booking::whereIn('trip_id', $tripIds)
                 ->whereIn('status', ['paid', 'completed'])
                 ->pluck('id');
 
             $revenue = Payment::whereIn('booking_id', $bookingIds)
-                ->where('status', 'completed')
+                ->whereIn('status', ['completed', 'SUCCESS'])
                 ->sum('amount');
         } catch (\Exception $e) {
             $revenue = 0;

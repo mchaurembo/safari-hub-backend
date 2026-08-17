@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class GarageBooking extends Model
 {
@@ -62,8 +64,13 @@ class GarageBooking extends Model
         return $this->hasMany(BookingUpdate::class, 'booking_id');
     }
 
-    public function workOrder(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function workOrder(): HasOne
     {
         return $this->hasOne(WorkOrder::class, 'garage_booking_id');
+    }
+
+    public function payments(): MorphMany
+    {
+        return $this->morphMany(Payment::class, 'payable');
     }
 }

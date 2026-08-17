@@ -19,6 +19,8 @@ class User extends Authenticatable
 
     public const CAPABILITY_ACTIVE = 'active';
 
+    public const CAPABILITY_INACTIVE = 'inactive';
+
     protected $fillable = [
         'name',
         'email',
@@ -127,7 +129,10 @@ class User extends Authenticatable
         return $this->hasMany(EmploymentRelationship::class, 'employee_user_id');
     }
 
-    /** Attach a capability without removing others. */
+    /**
+     * Attach or re-activate a capability without removing others.
+     * Reactivation only flips pivot status — it does not recreate or wipe history.
+     */
     public function enrollCapability(Role|string $role, string $status = self::CAPABILITY_ACTIVE): void
     {
         $roleModel = $role instanceof Role
@@ -148,6 +153,32 @@ class User extends Authenticatable
         $this->roles()->attach($roleModel->id, [
             'status' => $status,
             'started_at' => now(),
+        ]);
+        $this->unsetRelation('roles');
+        $this->refreshLegacyPrimaryRole();
+    }
+
+    /**
+     * Deactivate a capability. Never deletes payments, bookings, fleet, garage,
+     * or other records keyed by this user — re-enroll restores access to that history.
+     */
+    public function unenrollCapability(Role|string $role): void
+    {
+        $roleModel = $role instanceof Role
+            ? $role
+            : Role::where('name', $role)->first();
+
+        if (! $roleModel) {
+            return;
+        }
+
+        if (! $this->roles()->where('roles.id', $roleModel->id)->exists()) {
+            return;
+        }
+
+        $this->roles()->updateExistingPivot($roleModel->id, [
+            'status' => self::CAPABILITY_INACTIVE,
+            'ended_at' => now(),
         ]);
         $this->unsetRelation('roles');
         $this->refreshLegacyPrimaryRole();

@@ -2,13 +2,17 @@
 
 namespace App\Services;
 
+use App\Models\CargoRequest;
 use App\Models\Driver;
 use App\Models\EmploymentRelationship;
 use App\Models\Garage;
 use App\Models\GarageMember;
+use App\Models\Role;
 use App\Models\Technician;
 use App\Models\TransportOwner;
+use App\Models\Trip;
 use App\Models\User;
+use App\Models\Vehicle;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -102,6 +106,99 @@ class EmploymentService
 
             return $driver->load('user');
         });
+    }
+
+    /**
+     * Unassign a driver from fleet vehicles, end employment, and revoke driver capability.
+     * Does not delete trips, cargo, or payment history.
+     */
+    public function releaseDriverFromFleet(Driver $driver): void
+    {
+        DB::transaction(function () use ($driver) {
+            $fleetId = $driver->owner_id;
+            $user = $driver->user;
+
+            $driver->vehicles()->detach();
+            $driver->update([
+                'status' => 'inactive',
+                'owner_id' => null,
+            ]);
+
+            if ($fleetId && $user) {
+                $this->endTransportEmployment((int) $fleetId, $user->id);
+            }
+
+            if (! $user) {
+                return;
+            }
+
+            $stillEmployed = Driver::query()
+                ->where('user_id', $user->id)
+                ->whereNotNull('owner_id')
+                ->where('status', 'active')
+                ->exists();
+
+            if ($stillEmployed) {
+                return;
+            }
+
+            $role = Role::where('name', 'driver')->first();
+            if ($role && $user->roles()->where('roles.id', $role->id)->exists()) {
+                $user->roles()->updateExistingPivot($role->id, [
+                    'status' => 'revoked',
+                    'ended_at' => now(),
+                ]);
+                $user->unsetRelation('roles');
+                $user->refreshLegacyPrimaryRole();
+            }
+
+            $this->audit->log('driver.released', $driver, null, [
+                'fleet_id' => $fleetId,
+                'user_id' => $user->id,
+            ]);
+        });
+    }
+
+    /** Release every driver employed by this fleet (used when the owner leaves the service). */
+    public function releaseFleetDrivers(TransportOwner $fleet): int
+    {
+        $drivers = Driver::query()->where('owner_id', $fleet->id)->get();
+        foreach ($drivers as $driver) {
+            $this->releaseDriverFromFleet($driver);
+        }
+
+        return $drivers->count();
+    }
+
+    public function fleetHasActiveWork(TransportOwner $fleet): bool
+    {
+        $driverIds = Driver::where('owner_id', $fleet->id)->pluck('id');
+        $vehicleIds = Vehicle::where('owner_id', $fleet->id)->pluck('id');
+
+        if ($driverIds->isEmpty() && $vehicleIds->isEmpty()) {
+            return false;
+        }
+
+        $linked = function ($q) use ($driverIds, $vehicleIds) {
+            if ($driverIds->isNotEmpty()) {
+                $q->orWhereIn('driver_id', $driverIds);
+            }
+            if ($vehicleIds->isNotEmpty()) {
+                $q->orWhereIn('vehicle_id', $vehicleIds);
+            }
+        };
+
+        if (CargoRequest::query()
+            ->whereIn('status', ['accepted', 'in_progress', 'delivered'])
+            ->where($linked)
+            ->exists()) {
+            return true;
+        }
+
+        return Trip::query()
+            ->whereIn('status', ['scheduled', 'boarding', 'in_progress'])
+            ->where($linked)
+            ->exists();
     }
 
     /**

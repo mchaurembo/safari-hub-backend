@@ -111,6 +111,14 @@ DB_USERNAME=equsfzucxz
 DB_PASSWORD=********
 
 LOGIN_DEBUG=false
+
+# Malipo — Selcom (pesa inaingia kwenye akaunti ya SELCOM_VENDOR)
+PAYMENT_PROVIDER=selcom
+SELCOM_BASE_URL=https://apigw.selcommobile.com
+SELCOM_VENDOR=YOUR_VENDOR_ID
+SELCOM_API_KEY=
+SELCOM_API_SECRET=
+# Webhook: https://www.safarihub.space/api/payments/webhooks/selcom
 ```
 
 Kisha:

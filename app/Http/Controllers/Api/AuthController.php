@@ -10,6 +10,7 @@ use App\Models\Driver;
 use App\Models\Technician;
 use App\Models\TransportOwner;
 use App\Models\User;
+use App\Services\EmploymentService;
 use App\Support\AuthUserPresenter;
 use Vonage\Client as VonageClient;
 use Vonage\Client\Credentials\Basic as VonageBasic;
@@ -35,7 +36,8 @@ class AuthController extends Controller
         // This keeps older accounts compatible with the new multi-role UI.
         if ($user->role_id) {
             $legacyRole = Role::find($user->role_id);
-            if ($legacyRole) {
+            // Skip if a pivot row already exists (including inactive / unenrolled).
+            if ($legacyRole && ! $user->roles()->where('roles.id', $legacyRole->id)->exists()) {
                 $user->enrollCapability($legacyRole);
             }
         }
@@ -43,6 +45,7 @@ class AuthController extends Controller
         // Backfill pivot rows based on existing legacy module profile records.
         // This keeps the dashboard tiles accurate even if older accounts were
         // created before `user_roles` was introduced.
+        // Do not reactivate capabilities the user has explicitly unenrolled.
         $maybeRoles = [
             'owner' => $user->transportOwner()->exists(),
             // Driver capability is granted by fleet owners on hire — not by a seeker profile alone.
@@ -53,6 +56,9 @@ class AuthController extends Controller
 
         foreach ($maybeRoles as $name => $shouldAttach) {
             if (! $shouldAttach) {
+                continue;
+            }
+            if ($user->roles()->where('roles.name', $name)->exists()) {
                 continue;
             }
             $user->enrollCapability($name);
@@ -222,6 +228,57 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Capability enrolled',
             'next_step' => $nextStep,
+            'user' => $this->authUserPayload($user),
+        ]);
+    }
+
+    /**
+     * Remove a self-enrolled capability. Admin and driver stay employer/admin-granted.
+     * Does not delete bookings, payments, fleet, garage, or other history —
+     * re-enrolling the same capability restores access to those records.
+     */
+    public function unenrollRole(Request $request, EmploymentService $employment): JsonResponse
+    {
+        $validated = $request->validate([
+            'role' => 'required|in:customer,owner,garage_owner,technician',
+        ]);
+
+        $user = $request->user();
+        $role = $validated['role'];
+
+        if (! $user->hasCapability($role)) {
+            return response()->json(['message' => 'You are not enrolled in this capability'], 422);
+        }
+
+        if (count($user->activeCapabilityCodes()) <= 1) {
+            return response()->json(['message' => 'You must keep at least one capability'], 422);
+        }
+
+        $releasedDrivers = 0;
+
+        if ($role === 'owner') {
+            $fleet = $user->transportOwner;
+            if ($fleet) {
+                if ($employment->fleetHasActiveWork($fleet)) {
+                    return response()->json([
+                        'message' => 'Finish or cancel active trips before leaving Transport Owner. Drivers stay assigned until then.',
+                    ], 422);
+                }
+                $releasedDrivers = $employment->releaseFleetDrivers($fleet);
+            }
+        }
+
+        $user->unenrollCapability($role);
+
+        $message = 'Capability removed. Bookings, payments, and history stay on this account.';
+        if ($releasedDrivers > 0) {
+            $message = "Capability removed. {$releasedDrivers} driver(s) were released from your vehicles. They can apply to jobs again. Fleet and payment history stay on this account.";
+        }
+
+        return response()->json([
+            'message' => $message,
+            'history_preserved' => true,
+            'released_drivers' => $releasedDrivers,
             'user' => $this->authUserPayload($user),
         ]);
     }

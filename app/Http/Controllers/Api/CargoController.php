@@ -23,16 +23,17 @@ class CargoController extends Controller
         $dLng = deg2rad($lng2 - $lng1);
         $a = sin($dLat / 2) ** 2
             + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
         return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
     // GET /cargo/nearby-drivers?lat=&lng=&radius=50&all=false&include_offline=false
     public function nearbyDrivers(Request $request): JsonResponse
     {
-        $lat            = (float) $request->input('lat');
-        $lng            = (float) $request->input('lng');
-        $radius         = (float) $request->input('radius', 50);
-        $all            = filter_var($request->input('all', false), FILTER_VALIDATE_BOOLEAN);
+        $lat = (float) $request->input('lat');
+        $lng = (float) $request->input('lng');
+        $radius = (float) $request->input('radius', 50);
+        $all = filter_var($request->input('all', false), FILTER_VALIDATE_BOOLEAN);
         $includeOffline = filter_var($request->input('include_offline', false), FILTER_VALIDATE_BOOLEAN);
 
         // --- Drivers who have a location record ---
@@ -139,20 +140,20 @@ class CargoController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'driver_id'         => 'required|exists:drivers,id',
-            'vehicle_id'        => 'required|exists:vehicles,id',
-            'pickup_lat'        => 'required|numeric',
-            'pickup_lng'        => 'required|numeric',
-            'pickup_address'    => 'required|string',
-            'dest_lat'          => 'required|numeric',
-            'dest_lng'          => 'required|numeric',
-            'dest_address'      => 'required|string',
+            'driver_id' => 'required|exists:drivers,id',
+            'vehicle_id' => 'required|exists:vehicles,id',
+            'pickup_lat' => 'required|numeric',
+            'pickup_lng' => 'required|numeric',
+            'pickup_address' => 'required|string',
+            'dest_lat' => 'required|numeric',
+            'dest_lng' => 'required|numeric',
+            'dest_address' => 'required|string',
             'cargo_description' => 'required|string|max:500',
-            'weight_kg'         => 'nullable|numeric|min:0',
-            'customer_budget'   => 'nullable|numeric|min:0',
-            'notes'             => 'nullable|string|max:500',
+            'weight_kg' => 'nullable|numeric|min:0',
+            'customer_budget' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string|max:500',
             // Road distance from client map (OSRM); preferred over straight-line haversine.
-            'distance_km'       => 'nullable|numeric|min:0.1|max:5000',
+            'distance_km' => 'nullable|numeric|min:0.1|max:5000',
         ]);
 
         $straightLine = $this->haversine(
@@ -177,24 +178,24 @@ class CargoController extends Controller
             ...$validated,
             'customer_id' => $request->user()->id,
             'distance_km' => round($distance, 2),
-            'status'      => 'pending',
+            'status' => 'pending',
         ]);
 
         $cargo->load(['driver.user', 'vehicle']);
-        $driver   = $cargo->driver;
+        $driver = $cargo->driver;
         $customer = $request->user();
 
         $this->notify->driverNewRequest(
-            driverName:       $driver->user->name,
-            driverEmail:      $driver->user->email,
-            driverPhone:      $driver->user->phone,
-            customerName:     $customer->name,
-            pickupAddress:    $cargo->pickup_address,
-            destAddress:      $cargo->dest_address,
-            distanceKm:       (float) $cargo->distance_km,
+            driverName: $driver->user->name,
+            driverEmail: $driver->user->email,
+            driverPhone: $driver->user->phone,
+            customerName: $customer->name,
+            pickupAddress: $cargo->pickup_address,
+            destAddress: $cargo->dest_address,
+            distanceKm: (float) $cargo->distance_km,
             cargoDescription: $cargo->cargo_description,
-            customerBudget:   $cargo->customer_budget ? (float) $cargo->customer_budget : null,
-            driverWhatsapp:   $driver->user->whatsapp_number,
+            customerBudget: $cargo->customer_budget ? (float) $cargo->customer_budget : null,
+            driverWhatsapp: $driver->user->whatsapp_number,
         );
 
         return response()->json(['data' => $cargo], 201);
@@ -203,7 +204,7 @@ class CargoController extends Controller
     // GET /cargo/my-requests — customer's own requests
     public function myRequests(Request $request): JsonResponse
     {
-        $requests = CargoRequest::with(['driver.user', 'driver.location', 'vehicle'])
+        $requests = CargoRequest::with(['driver.user', 'driver.location', 'vehicle', 'payment'])
             ->where('customer_id', $request->user()->id)
             ->orderByDesc('created_at')
             ->get();
@@ -225,14 +226,14 @@ class CargoController extends Controller
         $cargo->load(['driver.user', 'vehicle']);
 
         $this->notify->driverQuoteAccepted(
-            driverName:      $cargo->driver->user->name,
-            driverEmail:     $cargo->driver->user->email,
-            driverPhone:     $cargo->driver->user->phone,
-            customerName:    $request->user()->name,
-            pickupAddress:   $cargo->pickup_address,
-            destAddress:     $cargo->dest_address,
-            quotedPrice:     (float) $cargo->quoted_price,
-            driverWhatsapp:  $cargo->driver->user->whatsapp_number,
+            driverName: $cargo->driver->user->name,
+            driverEmail: $cargo->driver->user->email,
+            driverPhone: $cargo->driver->user->phone,
+            customerName: $request->user()->name,
+            pickupAddress: $cargo->pickup_address,
+            destAddress: $cargo->dest_address,
+            quotedPrice: (float) $cargo->quoted_price,
+            driverWhatsapp: $cargo->driver->user->whatsapp_number,
         );
 
         return response()->json(['data' => $cargo]);
@@ -252,13 +253,13 @@ class CargoController extends Controller
         $cargo->load(['driver.user']);
 
         $this->notify->driverQuoteDeclined(
-            driverName:     $cargo->driver->user->name,
-            driverEmail:    $cargo->driver->user->email,
-            driverPhone:    $cargo->driver->user->phone,
-            customerName:   $request->user()->name,
-            pickupAddress:  $cargo->pickup_address,
-            destAddress:    $cargo->dest_address,
-            quotedPrice:    (float) $cargo->quoted_price,
+            driverName: $cargo->driver->user->name,
+            driverEmail: $cargo->driver->user->email,
+            driverPhone: $cargo->driver->user->phone,
+            customerName: $request->user()->name,
+            pickupAddress: $cargo->pickup_address,
+            destAddress: $cargo->dest_address,
+            quotedPrice: (float) $cargo->quoted_price,
             driverWhatsapp: $cargo->driver->user->whatsapp_number,
         );
 
@@ -271,7 +272,7 @@ class CargoController extends Controller
         if ($cargo->customer_id !== $request->user()->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
-        if (!in_array($cargo->status, ['pending', 'quoted'])) {
+        if (! in_array($cargo->status, ['pending', 'quoted'])) {
             return response()->json(['message' => 'Cannot cancel at this stage'], 422);
         }
 
@@ -301,7 +302,7 @@ class CargoController extends Controller
     public function driverRequests(Request $request): JsonResponse
     {
         $driver = $request->user()->driver;
-        if (!$driver) {
+        if (! $driver) {
             return response()->json(['message' => 'Not a driver'], 403);
         }
 
@@ -317,7 +318,7 @@ class CargoController extends Controller
     public function quote(Request $request, CargoRequest $cargo): JsonResponse
     {
         $driver = $request->user()->driver;
-        if (!$driver || $cargo->driver_id !== $driver->id) {
+        if (! $driver || $cargo->driver_id !== $driver->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
         if ($cargo->status !== 'pending') {
@@ -330,21 +331,21 @@ class CargoController extends Controller
 
         $cargo->update([
             'quoted_price' => $validated['quoted_price'],
-            'status'       => 'quoted',
+            'status' => 'quoted',
         ]);
 
         $cargo->load(['customer', 'vehicle']);
 
         $this->notify->customerDriverQuoted(
-            customerName:      $cargo->customer->name,
-            customerEmail:     $cargo->customer->email,
-            customerPhone:     $cargo->customer->phone,
-            driverName:        $request->user()->name,
-            pickupAddress:     $cargo->pickup_address,
-            destAddress:       $cargo->dest_address,
-            distanceKm:        (float) $cargo->distance_km,
-            quotedPrice:       (float) $cargo->quoted_price,
-            customerWhatsapp:  $cargo->customer->whatsapp_number,
+            customerName: $cargo->customer->name,
+            customerEmail: $cargo->customer->email,
+            customerPhone: $cargo->customer->phone,
+            driverName: $request->user()->name,
+            pickupAddress: $cargo->pickup_address,
+            destAddress: $cargo->dest_address,
+            distanceKm: (float) $cargo->distance_km,
+            quotedPrice: (float) $cargo->quoted_price,
+            customerWhatsapp: $cargo->customer->whatsapp_number,
         );
 
         return response()->json(['data' => $cargo]);
@@ -354,23 +355,26 @@ class CargoController extends Controller
     public function startTrip(Request $request, CargoRequest $cargo): JsonResponse
     {
         $driver = $request->user()->driver;
-        if (!$driver || $cargo->driver_id !== $driver->id) {
+        if (! $driver || $cargo->driver_id !== $driver->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
         if ($cargo->status !== 'accepted') {
             return response()->json(['message' => 'Request not accepted yet'], 422);
+        }
+        if (! $cargo->isPaid()) {
+            return response()->json(['message' => 'Customer must complete payment before the trip can start'], 422);
         }
 
         $cargo->update(['status' => 'in_progress']);
         $cargo->load(['customer']);
 
         $this->notify->customerTripStarted(
-            customerName:     $cargo->customer->name,
-            customerEmail:    $cargo->customer->email,
-            customerPhone:    $cargo->customer->phone,
-            driverName:       $request->user()->name,
-            pickupAddress:    $cargo->pickup_address,
-            destAddress:      $cargo->dest_address,
+            customerName: $cargo->customer->name,
+            customerEmail: $cargo->customer->email,
+            customerPhone: $cargo->customer->phone,
+            driverName: $request->user()->name,
+            pickupAddress: $cargo->pickup_address,
+            destAddress: $cargo->dest_address,
             customerWhatsapp: $cargo->customer->whatsapp_number,
         );
 
@@ -381,7 +385,7 @@ class CargoController extends Controller
     public function markDelivered(Request $request, CargoRequest $cargo): JsonResponse
     {
         $driver = $request->user()->driver;
-        if (!$driver || $cargo->driver_id !== $driver->id) {
+        if (! $driver || $cargo->driver_id !== $driver->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
         if ($cargo->status !== 'in_progress') {
@@ -392,12 +396,12 @@ class CargoController extends Controller
         $cargo->load(['customer']);
 
         $this->notify->customerCargoDelivered(
-            customerName:     $cargo->customer->name,
-            customerEmail:    $cargo->customer->email,
-            customerPhone:    $cargo->customer->phone,
-            driverName:       $request->user()->name,
-            destAddress:      $cargo->dest_address,
-            quotedPrice:      (float) $cargo->quoted_price,
+            customerName: $cargo->customer->name,
+            customerEmail: $cargo->customer->email,
+            customerPhone: $cargo->customer->phone,
+            driverName: $request->user()->name,
+            destAddress: $cargo->dest_address,
+            quotedPrice: (float) $cargo->quoted_price,
             customerWhatsapp: $cargo->customer->whatsapp_number,
         );
 
@@ -408,13 +412,13 @@ class CargoController extends Controller
     public function updateLocation(Request $request): JsonResponse
     {
         $driver = $request->user()->driver;
-        if (!$driver) {
+        if (! $driver) {
             return response()->json(['message' => 'Not a driver'], 403);
         }
 
         $validated = $request->validate([
-            'latitude'     => 'required|numeric',
-            'longitude'    => 'required|numeric',
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
             'is_available' => 'required|boolean',
         ]);
 

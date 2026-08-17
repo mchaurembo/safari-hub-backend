@@ -24,20 +24,35 @@ class NotificationService
 {
     /* Safari Hub brand palette (matches web/mobile) */
     private const BRAND_PRIMARY = '#7D1B28';
+
     private const BRAND_PRIMARY_DARK = '#5C1420';
+
     private const BRAND_GOLD = '#D4A017';
+
     private const BRAND_CREAM = '#FBF6E8';
+
     private const BRAND_PAGE = '#F7F5F4';
+
     private const BRAND_TEXT = '#1A1214';
+
     private const BRAND_MUTED = '#7A6E71';
+
     private const BRAND_BORDER = '#E5DCDE';
+
     private const BRAND_ROW_ALT = '#F3F0EF';
+
     private const BRAND_SUCCESS = '#1A7A4C';
+
     private const BRAND_SUCCESS_BG = '#E8F5EE';
+
     private const BRAND_WARNING = '#C9971A';
+
     private const BRAND_WARNING_BG = '#FBF6E8';
+
     private const BRAND_INFO = '#2C5F8A';
+
     private const BRAND_INFO_BG = '#EAF2F8';
+
     private const BRAND_MUTED_BG = '#F3F0EF';
 
     /* ─────────────────────────────────────────────────────────────────────
@@ -46,20 +61,20 @@ class NotificationService
 
     /** Customer creates a request → notify driver */
     public function driverNewRequest(
-        string  $driverName,
+        string $driverName,
         ?string $driverEmail,
         ?string $driverPhone,
-        string  $customerName,
-        string  $pickupAddress,
-        string  $destAddress,
-        float   $distanceKm,
-        string  $cargoDescription,
-        ?float  $customerBudget,
+        string $customerName,
+        string $pickupAddress,
+        string $destAddress,
+        float $distanceKm,
+        string $cargoDescription,
+        ?float $customerBudget,
         ?string $driverWhatsapp = null
     ): void {
-        $budgetFmt  = $customerBudget ? 'TZS ' . number_format($customerBudget) : 'Not specified';
+        $budgetFmt = $customerBudget ? 'TZS '.number_format($customerBudget) : 'Not specified';
         $budgetHtml = $customerBudget
-            ? '<strong>TZS ' . number_format($customerBudget) . '</strong>'
+            ? '<strong>TZS '.number_format($customerBudget).'</strong>'
             : '<em>Not specified</em>';
 
         $rows = [
@@ -79,8 +94,8 @@ class NotificationService
         );
 
         $sms = "Safari Hub: New cargo request from {$customerName}.\n"
-             . "From: {$pickupAddress}\nTo: {$destAddress} ({$distanceKm}km).\n"
-             . "Budget: {$budgetFmt}. Log in to quote.";
+             ."From: {$pickupAddress}\nTo: {$destAddress} ({$distanceKm}km).\n"
+             ."Budget: {$budgetFmt}. Log in to quote.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
             "New Cargo Request from {$customerName}", $html, $sms,
@@ -89,17 +104,17 @@ class NotificationService
 
     /** Driver sends a quote → notify customer */
     public function customerDriverQuoted(
-        string  $customerName,
+        string $customerName,
         ?string $customerEmail,
         ?string $customerPhone,
-        string  $driverName,
-        string  $pickupAddress,
-        string  $destAddress,
-        float   $distanceKm,
-        float   $quotedPrice,
+        string $driverName,
+        string $pickupAddress,
+        string $destAddress,
+        float $distanceKm,
+        float $quotedPrice,
         ?string $customerWhatsapp = null
     ): void {
-        $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $priceFmt = 'TZS '.number_format($quotedPrice);
         $accent = self::BRAND_PRIMARY;
 
         $rows = [
@@ -118,8 +133,8 @@ class NotificationService
         );
 
         $sms = "Safari Hub: {$driverName} quoted {$priceFmt} for your cargo.\n"
-             . "From: {$pickupAddress} → {$destAddress}.\n"
-             . "Log in to accept or decline.";
+             ."From: {$pickupAddress} → {$destAddress}.\n"
+             .'Log in to accept or decline.';
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
             "Driver Quoted {$priceFmt} — Safari Hub", $html, $sms,
@@ -128,16 +143,16 @@ class NotificationService
 
     /** Customer accepts quote → notify driver */
     public function driverQuoteAccepted(
-        string  $driverName,
+        string $driverName,
         ?string $driverEmail,
         ?string $driverPhone,
-        string  $customerName,
-        string  $pickupAddress,
-        string  $destAddress,
-        float   $quotedPrice,
+        string $customerName,
+        string $pickupAddress,
+        string $destAddress,
+        float $quotedPrice,
         ?string $driverWhatsapp = null
     ): void {
-        $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $priceFmt = 'TZS '.number_format($quotedPrice);
         $accent = self::BRAND_SUCCESS;
 
         $rows = [
@@ -155,25 +170,25 @@ class NotificationService
         );
 
         $sms = "Safari Hub: {$customerName} accepted your quote of {$priceFmt}.\n"
-             . "Pickup: {$pickupAddress}. Head there now.";
+             ."Pickup: {$pickupAddress}. Head there now.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
-            "Quote Accepted — Safari Hub", $html, $sms,
+            'Quote Accepted — Safari Hub', $html, $sms,
             $driverWhatsapp ?? $driverPhone);
     }
 
     /** Customer declines quote → notify driver */
     public function driverQuoteDeclined(
-        string  $driverName,
+        string $driverName,
         ?string $driverEmail,
         ?string $driverPhone,
-        string  $customerName,
-        string  $pickupAddress,
-        string  $destAddress,
-        float   $quotedPrice,
+        string $customerName,
+        string $pickupAddress,
+        string $destAddress,
+        float $quotedPrice,
         ?string $driverWhatsapp = null
     ): void {
-        $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $priceFmt = 'TZS '.number_format($quotedPrice);
 
         $rows = [
             ['Customer',    $customerName],
@@ -192,18 +207,18 @@ class NotificationService
         $sms = "Safari Hub: {$customerName} declined your quote of {$priceFmt} for the trip from {$pickupAddress}.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
-            "Quote Declined — Safari Hub", $html, $sms,
+            'Quote Declined — Safari Hub', $html, $sms,
             $driverWhatsapp ?? $driverPhone);
     }
 
     /** Driver starts trip → notify customer */
     public function customerTripStarted(
-        string  $customerName,
+        string $customerName,
         ?string $customerEmail,
         ?string $customerPhone,
-        string  $driverName,
-        string  $pickupAddress,
-        string  $destAddress,
+        string $driverName,
+        string $pickupAddress,
+        string $destAddress,
         ?string $customerWhatsapp = null
     ): void {
         $accent = self::BRAND_INFO;
@@ -223,24 +238,24 @@ class NotificationService
         );
 
         $sms = "Safari Hub: Your cargo trip has started.\n"
-             . "Driver: {$driverName}. From {$pickupAddress} to {$destAddress}.";
+             ."Driver: {$driverName}. From {$pickupAddress} to {$destAddress}.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
-            "Your Cargo Trip Has Started — Safari Hub", $html, $sms,
+            'Your Cargo Trip Has Started — Safari Hub', $html, $sms,
             $customerWhatsapp ?? $customerPhone);
     }
 
     /** Driver marks delivered → notify customer */
     public function customerCargoDelivered(
-        string  $customerName,
+        string $customerName,
         ?string $customerEmail,
         ?string $customerPhone,
-        string  $driverName,
-        string  $destAddress,
-        float   $quotedPrice,
+        string $driverName,
+        string $destAddress,
+        float $quotedPrice,
         ?string $customerWhatsapp = null
     ): void {
-        $priceFmt = 'TZS ' . number_format($quotedPrice);
+        $priceFmt = 'TZS '.number_format($quotedPrice);
         $accent = self::BRAND_SUCCESS;
 
         $rows = [
@@ -257,10 +272,10 @@ class NotificationService
         );
 
         $sms = "Safari Hub: Your cargo has been delivered to {$destAddress} by {$driverName}.\n"
-             . "Amount: {$priceFmt}. Log in to confirm.";
+             ."Amount: {$priceFmt}. Log in to confirm.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
-            "Cargo Delivered — Please Confirm", $html, $sms,
+            'Cargo Delivered — Please Confirm', $html, $sms,
             $customerWhatsapp ?? $customerPhone);
     }
 
@@ -270,12 +285,12 @@ class NotificationService
 
     /** Technician starts garage service → notify customer */
     public function customerGarageServiceStarted(
-        string  $customerName,
+        string $customerName,
         ?string $customerEmail,
         ?string $customerPhone,
-        string  $garageName,
-        string  $serviceName,
-        string  $technicianName,
+        string $garageName,
+        string $serviceName,
+        string $technicianName,
         ?string $vehicleReg = null,
         ?string $customerWhatsapp = null
     ): void {
@@ -298,7 +313,7 @@ class NotificationService
 
         $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
         $sms = "Safari Hub (Garage): Your {$serviceName} has started at {$garageName}."
-             . " Technician: {$technicianName}.{$vehicleLine}";
+             ." Technician: {$technicianName}.{$vehicleLine}";
 
         $this->dispatchAllChannels($customerName, $customerEmail, $customerPhone,
             "Service Started — {$garageName}", $html, $sms,
@@ -314,17 +329,17 @@ class NotificationService
 
     /** Technician completes garage service → notify customer */
     public function customerGarageServiceCompleted(
-        string  $customerName,
+        string $customerName,
         ?string $customerEmail,
         ?string $customerPhone,
-        string  $garageName,
-        string  $serviceName,
-        string  $technicianName,
+        string $garageName,
+        string $serviceName,
+        string $technicianName,
         ?string $vehicleReg = null,
-        ?float  $amount = null,
+        ?float $amount = null,
         ?string $customerWhatsapp = null
     ): void {
-        $amountFmt = $amount !== null ? 'TZS ' . number_format($amount) : null;
+        $amountFmt = $amount !== null ? 'TZS '.number_format($amount) : null;
         $success = self::BRAND_SUCCESS;
         $amountHtml = $amountFmt
             ? "<strong style='color:{$success};font-size:16px;'>{$amountFmt}</strong>"
@@ -349,7 +364,7 @@ class NotificationService
         $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
         $amountLine = $amountFmt ? " Amount: {$amountFmt}." : '';
         $sms = "Safari Hub (Garage): Your {$serviceName} at {$garageName} is complete."
-             . " Technician: {$technicianName}.{$vehicleLine}{$amountLine}";
+             ." Technician: {$technicianName}.{$vehicleLine}{$amountLine}";
 
         $detail = trim('Technician: '.$technicianName
             .($vehicleReg ? '. Vehicle: '.$vehicleReg : '')
@@ -368,6 +383,69 @@ class NotificationService
             ]);
     }
 
+    /** Payment lifecycle notifications (customer). */
+    public function paymentStatusChanged(
+        string $customerName,
+        ?string $customerEmail,
+        ?string $customerPhone,
+        string $event,
+        string $paymentReference,
+        string $amountFormatted,
+        string $method,
+        string $status,
+        ?string $bookingReference = null,
+        ?string $customerWhatsapp = null
+    ): void {
+        $titles = [
+            'initiated' => 'Payment Initiated',
+            'pending' => 'Payment Pending',
+            'successful' => 'Payment Successful',
+            'failed' => 'Payment Failed',
+            'expired' => 'Payment Expired',
+            'refund_requested' => 'Refund Requested',
+            'refund_successful' => 'Refund Successful',
+        ];
+        $title = $titles[$event] ?? 'Payment Update';
+        $success = in_array($event, ['successful', 'refund_successful'], true);
+        $statusColor = $success
+            ? self::BRAND_SUCCESS
+            : ($event === 'failed' || $event === 'expired' ? self::BRAND_WARNING : self::BRAND_INFO);
+
+        $rows = [
+            ['Reference', $paymentReference],
+            ['Amount', "<strong>{$amountFormatted}</strong>"],
+            ['Method', $method],
+            ['Status', "<strong style=\"color:{$statusColor};\">{$status}</strong>"],
+        ];
+        if ($bookingReference) {
+            $rows[] = ['Booking', $bookingReference];
+        }
+
+        $html = $this->wrap(
+            "Hi <strong>{$customerName}</strong>, here is your Safari Hub payment update.",
+            $this->table($rows),
+            $this->callout(
+                $success ? '✓ Keep this reference for your records' : 'Open Safari Hub to retry or view status',
+                $success ? self::BRAND_SUCCESS : self::BRAND_INFO,
+                $success ? self::BRAND_SUCCESS_BG : self::BRAND_INFO_BG
+            ),
+            "💳 {$title}"
+        );
+
+        $sms = "Safari Hub: {$title}. Ref {$paymentReference}. {$amountFormatted} via {$method}. Status: {$status}."
+            .($bookingReference ? " Booking: {$bookingReference}." : '');
+
+        $this->dispatch(
+            $customerName,
+            $customerEmail,
+            $customerPhone,
+            "{$title} — {$paymentReference}",
+            $html,
+            $sms,
+            $customerWhatsapp
+        );
+    }
+
     /* ─────────────────────────────────────────────────────────────────────
      |  CORE DISPATCH
      ───────────────────────────────────────────────────────────────────── */
@@ -377,14 +455,14 @@ class NotificationService
      * Unlike dispatch(), WhatsApp success does not skip SMS.
      */
     private function dispatchAllChannels(
-        string  $name,
+        string $name,
         ?string $email,
         ?string $phone,
-        string  $subject,
-        string  $html,
-        string  $smsText,
+        string $subject,
+        string $html,
+        string $smsText,
         ?string $whatsappNumber = null,
-        ?array  $whatsappBodyParams = null
+        ?array $whatsappBodyParams = null
     ): void {
         $this->clearProxyEnv();
 
@@ -399,6 +477,7 @@ class NotificationService
         $waPhone = $whatsappNumber ?: $phone;
         if (! $waPhone) {
             Log::warning('Garage WhatsApp skipped — customer has no phone/whatsapp_number');
+
             return;
         }
 
@@ -463,12 +542,12 @@ class NotificationService
     }
 
     private function dispatch(
-        string  $name,
+        string $name,
         ?string $email,
         ?string $phone,
-        string  $subject,
-        string  $html,
-        string  $smsText,
+        string $subject,
+        string $html,
+        string $smsText,
         ?string $whatsappNumber = null   // use whatsapp_number if set, else falls back to $phone
     ): void {
         $this->clearProxyEnv();
@@ -486,15 +565,19 @@ class NotificationService
             $channel = config('services.notification_channel', 'whatsapp_sms');
 
             if ($channel === 'whatsapp') {
-                if ($waPhone) $this->sendWhatsApp($waPhone, $smsText);
+                if ($waPhone) {
+                    $this->sendWhatsApp($waPhone, $smsText);
+                }
 
             } elseif ($channel === 'sms') {
-                if ($phone) $this->sendSms($phone, $smsText);
+                if ($phone) {
+                    $this->sendSms($phone, $smsText);
+                }
 
             } elseif ($channel === 'whatsapp_sms') {
                 // Try WhatsApp first; fall back to SMS if it fails or is not configured
                 $sent = $waPhone ? $this->sendWhatsApp($waPhone, $smsText) : false;
-                if (!$sent && $phone) {
+                if (! $sent && $phone) {
                     $this->sendSms($phone, $smsText);
                 }
             }
@@ -510,8 +593,9 @@ class NotificationService
     {
         $apiKey = config('resend.api_key');
 
-        if (!$apiKey || str_contains($apiKey, 'YOUR_')) {
+        if (! $apiKey || str_contains($apiKey, 'YOUR_')) {
             Log::warning("Resend not configured — skipping email to {$email}");
+
             return;
         }
 
@@ -519,14 +603,14 @@ class NotificationService
 
         try {
             Resend::emails()->send([
-                'from'    => config('mail.from.name', 'Safari Hub') . ' <' . config('mail.from.address', 'onboarding@resend.dev') . '>',
-                'to'      => [$to],
+                'from' => config('mail.from.name', 'Safari Hub').' <'.config('mail.from.address', 'onboarding@resend.dev').'>',
+                'to' => [$to],
                 'subject' => $subject,
-                'html'    => $html,
+                'html' => $html,
             ]);
             Log::info("Email sent to {$to}: {$subject}");
         } catch (\Exception $e) {
-            Log::error("Email failed to {$to}: " . $e->getMessage());
+            Log::error("Email failed to {$to}: ".$e->getMessage());
         }
     }
 
@@ -550,25 +634,26 @@ class NotificationService
      */
     private function sendWhatsApp(string $phone, string $text): bool
     {
-        $token   = config('services.whatsapp.token');
+        $token = config('services.whatsapp.token');
         $phoneId = config('services.whatsapp.phone_number_id');
 
-        if (!$token || !$phoneId || str_contains($token, 'YOUR_')) {
-            Log::info("WhatsApp not configured — will fall back to SMS");
+        if (! $token || ! $phoneId || str_contains($token, 'YOUR_')) {
+            Log::info('WhatsApp not configured — will fall back to SMS');
+
             return false;
         }
 
         $normalized = $this->normalizePhone($phone);
         // Meta Graph API expects digits only (no leading +)
         $to = ltrim($normalized, '+');
-        $url        = "https://graph.facebook.com/v21.0/{$phoneId}/messages";
+        $url = "https://graph.facebook.com/v21.0/{$phoneId}/messages";
 
         $payload = json_encode([
             'messaging_product' => 'whatsapp',
-            'recipient_type'    => 'individual',
-            'to'                => $to,
-            'type'              => 'text',
-            'text'              => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
+            'recipient_type' => 'individual',
+            'to' => $to,
+            'type' => 'text',
+            'text' => ['preview_url' => false, 'body' => mb_substr($text, 0, 4096)],
         ]);
 
         return $this->postWhatsApp($url, $token, $payload, $to, 'text');
@@ -580,14 +665,15 @@ class NotificationService
      */
     private function sendWhatsAppTemplate(string $phone, string $fallbackText = '', ?array $bodyParams = null): bool
     {
-        $token   = config('services.whatsapp.token');
+        $token = config('services.whatsapp.token');
         $phoneId = config('services.whatsapp.phone_number_id');
-        $name    = config('services.whatsapp.template_name', 'hello_world');
-        $lang    = config('services.whatsapp.template_lang', 'en_US');
+        $name = config('services.whatsapp.template_name', 'hello_world');
+        $lang = config('services.whatsapp.template_lang', 'en_US');
         $paramCount = (int) config('services.whatsapp.template_body_params', 0);
 
-        if (!$token || !$phoneId || str_contains($token, 'YOUR_') || !$name) {
+        if (! $token || ! $phoneId || str_contains($token, 'YOUR_') || ! $name) {
             Log::info('WhatsApp template skipped — not configured');
+
             return false;
         }
 
@@ -642,22 +728,23 @@ class NotificationService
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_HTTPHEADER     => [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
                 "Authorization: Bearer {$token}",
             ],
-            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_TIMEOUT => 15,
         ]);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr  = curl_error($ch);
+        $curlErr = curl_error($ch);
         curl_close($ch);
 
         if ($curlErr) {
             Log::error("WhatsApp cURL error ({$kind}) to {$to}: {$curlErr}");
+
             return false;
         }
 
@@ -665,15 +752,17 @@ class NotificationService
 
         if ($httpCode === 200 && isset($decoded['messages'][0]['id'])) {
             Log::info("WhatsApp {$kind} sent to {$to} (msg_id: {$decoded['messages'][0]['id']})");
+
             return true;
         }
 
         $errMsg = $decoded['error']['message'] ?? $response;
         $errCode = $decoded['error']['code'] ?? null;
-        Log::warning("WhatsApp {$kind} failed to {$to} (HTTP {$httpCode}" . ($errCode ? ", code {$errCode}" : '') . "): {$errMsg}");
+        Log::warning("WhatsApp {$kind} failed to {$to} (HTTP {$httpCode}".($errCode ? ", code {$errCode}" : '')."): {$errMsg}");
         if ((int) $httpCode === 401 || (int) $errCode === 190) {
             Log::error('WhatsApp Authentication Error — refresh WHATSAPP_TOKEN in backend/.env (Meta temporary tokens expire in ~24h), then run: php artisan config:clear');
         }
+
         return false;
     }
 
@@ -683,12 +772,13 @@ class NotificationService
 
     private function sendSms(string $phone, string $text): void
     {
-        $key    = config('services.vonage.key');
+        $key = config('services.vonage.key');
         $secret = config('services.vonage.secret');
-        $from   = config('services.vonage.from', 'TransCargo');
+        $from = config('services.vonage.from', 'TransCargo');
 
-        if (!$key || !$secret) {
+        if (! $key || ! $secret) {
             Log::warning("Vonage not configured — skipping SMS to {$phone}");
+
             return;
         }
 
@@ -699,7 +789,7 @@ class NotificationService
             $vonage->sms()->send(new VonageSMS($normalized, $from, $text));
             Log::info("SMS sent to {$normalized}");
         } catch (\Exception $e) {
-            Log::error("SMS failed to {$normalized}: " . $e->getMessage());
+            Log::error("SMS failed to {$normalized}: ".$e->getMessage());
         }
     }
 
@@ -710,14 +800,15 @@ class NotificationService
     private function normalizePhone(string $phone): string
     {
         if (preg_match('/^0[67]\d{8}$/', $phone)) {
-            return '+255' . substr($phone, 1);
+            return '+255'.substr($phone, 1);
         }
         if (preg_match('/^255[67]\d{8}$/', $phone)) {
-            return '+' . $phone;
+            return '+'.$phone;
         }
-        if (!str_starts_with($phone, '+')) {
-            return '+' . $phone;
+        if (! str_starts_with($phone, '+')) {
+            return '+'.$phone;
         }
+
         return $phone;
     }
 
@@ -781,9 +872,13 @@ class NotificationService
         <body style="font-family:'Segoe UI',Arial,sans-serif;background:{$page};margin:0;padding:24px;">
           <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;
                       overflow:hidden;box-shadow:0 8px 28px rgba(125,27,40,0.12);border:1px solid {$border};">
-            <div style="background:linear-gradient(135deg, {$primary} 0%, {$primaryDark} 70%, {$gold} 160%);padding:22px 28px;">
-              <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:{$cream};opacity:0.9;margin-bottom:6px;font-weight:700;">Safari Hub</div>
-              <h1 style="color:#fff;margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em;">{$header}</h1>
+            <div style="background-color:{$primary};background:linear-gradient(135deg, {$primary} 0%, {$primaryDark} 70%, {$gold} 160%);padding:22px 28px;">
+              <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;font-weight:700;">
+                <span style="color:#FFFFFF !important;">Safari Hub</span>
+              </div>
+              <div style="margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em;line-height:1.35;">
+                <span style="color:#FFFFFF !important;">{$header}</span>
+              </div>
             </div>
             <div style="height:4px;background:linear-gradient(90deg, {$gold}, {$cream}, {$primary});"></div>
             <div style="padding:28px;">

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Booking extends Model
 {
@@ -22,7 +23,12 @@ class Booking extends Model
 
     public function payment(): HasOne
     {
-        return $this->hasOne(Payment::class);
+        return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
+    public function payments(): MorphMany
+    {
+        return $this->morphMany(Payment::class, 'payable');
     }
 
     public function ticket(): HasOne

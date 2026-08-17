@@ -69,31 +69,7 @@ class DriverController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $driver->update(['status' => 'inactive', 'owner_id' => null]);
-
-        \App\Models\EmploymentRelationship::query()
-            ->where('employer_type', \App\Models\EmploymentRelationship::EMPLOYER_TRANSPORT)
-            ->where('employer_id', $owner->id)
-            ->where('employee_user_id', $driver->user_id)
-            ->where('employment_type', \App\Models\EmploymentRelationship::TYPE_DRIVER)
-            ->where('status', 'active')
-            ->update([
-                'status' => 'ended',
-                'end_date' => now()->toDateString(),
-            ]);
-
-        // Revoke driver capability if no longer employed by any fleet.
-        if (! Driver::where('user_id', $driver->user_id)->whereNotNull('owner_id')->where('status', 'active')->exists()) {
-            $role = \App\Models\Role::where('name', 'driver')->first();
-            if ($role) {
-                $driver->user->roles()->updateExistingPivot($role->id, [
-                    'status' => 'revoked',
-                    'ended_at' => now(),
-                ]);
-                $driver->user->unsetRelation('roles');
-                $driver->user->refreshLegacyPrimaryRole();
-            }
-        }
+        $this->employment->releaseDriverFromFleet($driver);
 
         return response()->json(['message' => 'Driver removed from fleet'], 200);
     }

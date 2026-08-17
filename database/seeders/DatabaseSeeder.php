@@ -6,15 +6,18 @@ use App\Models\Driver;
 use App\Models\Role;
 use App\Models\Route;
 use App\Models\TransportOwner;
+use App\Models\Trip;
 use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Database\Seeder;
+
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
         $this->call(RoleSeeder::class);
         $this->call(PermissionSeeder::class);
+        $this->call(PaymentSeeder::class);
 
         $adminRole = Role::where('name', 'admin')->first();
         $ownerRole = Role::where('name', 'owner')->first();
@@ -109,7 +112,7 @@ class DatabaseSeeder extends Seeder
 
         $driver = Driver::where('user_id', $driverUser->id)->first();
 
-        \App\Models\Trip::firstOrCreate(
+        Trip::firstOrCreate(
             [
                 'route_id' => $routeDarDodoma->id,
                 'vehicle_id' => $vehicle->id,

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking;
 use App\Models\Complaint;
 use App\Models\Driver;
 use App\Models\Garage;
+use App\Models\Payment;
 use App\Models\Role;
 use App\Models\Technician;
 use App\Models\TransportOwner;
@@ -160,7 +162,7 @@ class AdminController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|string|email|max:255|unique:users,email,' . $user->id,
+            'email' => 'sometimes|string|email|max:255|unique:users,email,'.$user->id,
             'phone' => ['nullable', 'string', 'max:20', 'regex:/^[\d\s\+\-\(\)\.]{10,20}$/', function ($attribute, $value, $fail) {
                 if ($value) {
                     $digits = preg_replace('/\D/', '', $value);
@@ -324,11 +326,11 @@ class AdminController extends Controller
         $from = $request->input('from', now()->startOfMonth()->toDateString());
         $to = $request->input('to', now()->toDateString());
 
-        $bookingsCount = \App\Models\Booking::whereIn('status', ['paid', 'completed'])
+        $bookingsCount = Booking::whereIn('status', ['paid', 'completed'])
             ->whereBetween('created_at', [$from, $to])
             ->count();
 
-        $revenue = \App\Models\Payment::where('status', 'completed')
+        $revenue = Payment::whereIn('status', ['completed', 'SUCCESS'])
             ->whereBetween('created_at', [$from, $to])
             ->sum('amount');
 
@@ -362,8 +364,8 @@ class AdminController extends Controller
         $transportOwner = TransportOwner::firstOrCreate(
             ['user_id' => $user->id],
             [
-                'company_name' => $user->name . "'s Transport",
-                'license_number' => 'PENDING-' . $user->id,
+                'company_name' => $user->name."'s Transport",
+                'license_number' => 'PENDING-'.$user->id,
                 'address' => null,
                 'status' => 'pending',
             ]

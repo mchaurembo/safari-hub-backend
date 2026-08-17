@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Add trigger to normalize phone/whatsapp_number to 0XXXXXXXXX before insert/update.
-     * Ensures +255754845464 and 0754845464 are stored identically so UNIQUE constraint works.
+     * Ensures +255712345678 and 0712345678 are stored identically so UNIQUE constraint works.
      */
     public function up(): void
     {
