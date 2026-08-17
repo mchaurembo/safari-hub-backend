@@ -86,6 +86,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/owner/profile', [OwnerController::class, 'saveProfile']);
     Route::get('/owner/vehicles', [OwnerController::class, 'vehicles']);
     Route::get('/owner/drivers', [OwnerController::class, 'drivers']);
+    Route::get('/owner/drivers/{driver}', [OwnerController::class, 'showDriver']);
     Route::get('/owner/trips', [OwnerController::class, 'trips']);
     Route::get('/owner/revenue', [OwnerController::class, 'revenue']);
     Route::get('/owner/cargo-trips', [OwnerController::class, 'cargoTrips']);

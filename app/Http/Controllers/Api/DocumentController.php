@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Driver;
 use App\Models\DriverDocument;
 use App\Models\JobApplication;
 use App\Services\EmploymentService;
@@ -78,7 +79,7 @@ class DocumentController extends Controller
         ]);
     }
 
-    /** Stream document file for owner viewing applicant documents (auth required) */
+    /** Stream document file for owner viewing fleet-driver or applicant documents (auth required) */
     public function ownerFile(Request $request, $id)
     {
         $owner = $request->user()->transportOwner ?? null;
@@ -88,12 +89,15 @@ class DocumentController extends Controller
 
         $document = DriverDocument::withTrashed()->findOrFail($id);
 
-        // Verify document belongs to a driver who has an application to one of owner's job postings
-        $hasAccess = JobApplication::where('driver_id', $document->driver_id)
+        $isFleetDriver = Driver::where('id', $document->driver_id)
+            ->where('owner_id', $owner->id)
+            ->exists();
+
+        $hasApplicationAccess = JobApplication::where('driver_id', $document->driver_id)
             ->whereHas('posting', fn ($q) => $q->where('transport_owner_id', $owner->id))
             ->exists();
 
-        if (!$hasAccess) {
+        if (! $isFleetDriver && ! $hasApplicationAccess) {
             abort(404);
         }
 

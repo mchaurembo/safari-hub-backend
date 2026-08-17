@@ -127,9 +127,35 @@ class OwnerController extends Controller
             return response()->json(['message' => 'Not a transport owner'], 403);
         }
 
-        $drivers = Driver::with('user')->where('owner_id', $owner->id)->orderByDesc('created_at')->get();
+        $drivers = Driver::with('user')
+            ->withCount('documents')
+            ->where('owner_id', $owner->id)
+            ->orderByDesc('created_at')
+            ->get();
 
         return response()->json(['data' => $drivers]);
+    }
+
+    public function showDriver(Request $request, int $driver): JsonResponse
+    {
+        $owner = $request->user()->transportOwner;
+        if (! $owner) {
+            return response()->json(['message' => 'Not a transport owner'], 403);
+        }
+
+        $record = Driver::with([
+            'user',
+            'vehicles',
+            'documents' => fn ($q) => $q->withTrashed()->latest(),
+        ])
+            ->where('owner_id', $owner->id)
+            ->find($driver);
+
+        if (! $record) {
+            return response()->json(['message' => 'Driver not found'], 404);
+        }
+
+        return response()->json(['data' => $record]);
     }
 
     public function trips(Request $request): JsonResponse

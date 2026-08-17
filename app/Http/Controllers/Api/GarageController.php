@@ -499,7 +499,8 @@ class GarageController extends Controller
             $query->whereDate('scheduled_at', '<=', $request->to);
         }
 
-        $bookings = $query->orderByDesc('scheduled_at')->orderByDesc('id')->paginate(20);
+        $perPage = min(100, max(1, (int) $request->integer('per_page', 20)));
+        $bookings = $query->orderBy('id')->paginate($perPage);
 
         return response()->json($bookings);
     }
