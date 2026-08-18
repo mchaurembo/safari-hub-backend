@@ -142,21 +142,22 @@ class AuthController extends Controller
             RateLimiter::hit($rateLimitKey, 900);
         }
 
-        $devOtp = $this->issuePhoneClaimOtp($phone);
+        $plainOtp = $this->issuePhoneClaimOtp($phone);
+        $this->sendPhoneClaimPendingEmail($holder, $phone);
 
         return response()->json([
             'message' => 'OTP sent to this number. After verification it can be moved to your new account.',
             'code' => 'PHONE_REQUIRES_CLAIM',
             'phone' => $phone,
-            'dev_otp' => $devOtp,
+            'dev_otp' => $this->otpForClientResponse($plainOtp),
         ]);
     }
 
-    /** @return string|null Plain OTP in local so the UI can show it; null in production. */
-    private function issuePhoneClaimOtp(string $phone): ?string
+    /** @return string Plain OTP (hashed in DB). Never include this in JSON unless otpForClientResponse(). */
+    private function issuePhoneOtp(string $phone, string $type): string
     {
         PasswordResetOtp::where('identifier', $phone)
-            ->where('type', 'claim')
+            ->where('type', $type)
             ->where('used', false)
             ->update(['used' => true]);
 
@@ -164,43 +165,186 @@ class AuthController extends Controller
 
         PasswordResetOtp::create([
             'identifier' => $phone,
-            'type' => 'claim',
+            'type' => $type,
             'otp' => Hash::make($plainOtp),
             'used' => false,
             'expires_at' => Carbon::now()->addMinutes(10),
         ]);
 
         $error = null;
-        $this->sendOtpSms($phone, $plainOtp, $error, 'claim');
+        $this->sendOtpSms($phone, $plainOtp, $error, $type);
         if ($error) {
-            Log::warning("Phone-claim OTP SMS failed for {$phone}: {$error}");
+            Log::warning("Phone OTP SMS failed [{$type}] for {$phone}: {$error}");
         }
 
-        if (app()->environment('local')) {
-            Log::info("════ DEV PHONE-CLAIM OTP for {$phone} ════ {$plainOtp} ════");
-
-            return $plainOtp;
+        if (app()->environment('local') || ! $this->vonageIsReady()) {
+            Log::info("════ PHONE OTP [{$type}] for {$phone} ════ {$plainOtp} ════");
         }
 
-        return null;
+        return $plainOtp;
     }
 
-    private function consumePhoneClaimOtp(string $phone, string $otp): bool
+    private function vonageIsReady(): bool
     {
-        $formats = $this->phoneFormatsForLookup($phone);
-        $record = PasswordResetOtp::where('type', 'claim')
-            ->where('used', false)
-            ->whereIn('identifier', $formats)
-            ->latest()
-            ->first();
+        return (bool) config('services.vonage.key') && (bool) config('services.vonage.secret');
+    }
 
-        if (! $record || $record->isExpired() || ! Hash::check($otp, $record->otp)) {
+    private function otpForClientResponse(string $plainOtp): ?string
+    {
+        return (app()->environment('local') || ! $this->vonageIsReady()) ? $plainOtp : null;
+    }
+
+    private function issuePhoneClaimOtp(string $phone): string
+    {
+        return $this->issuePhoneOtp($phone, 'claim');
+    }
+
+    private function maskEmail(string $email): string
+    {
+        $parts = explode('@', $email, 2);
+        if (count($parts) !== 2 || $parts[0] === '') {
+            return '****';
+        }
+        $name = $parts[0];
+        $keep = min(2, strlen($name));
+
+        return substr($name, 0, $keep) . str_repeat('*', max(1, strlen($name) - $keep)) . '@' . $parts[1];
+    }
+
+    /** Same OTP emailed to the account's current email (fallback when SMS is unavailable). */
+    private function sendPhoneOtpToUserEmail(User $user, string $otp, string $purpose): void
+    {
+        if (! $user->email) {
+            return;
+        }
+
+        $error = null;
+        $sent = $this->sendOtpEmail($user, $user->email, $otp, $error);
+        if (! $sent) {
+            Log::warning("Phone OTP email failed [{$purpose}] for user {$user->id}: {$error}");
+        }
+    }
+
+    /** Warn the current owner that someone is moving their number. */
+    private function sendPhoneClaimPendingEmail(User $previous, string $phone): void
+    {
+        if (! $previous->email) {
+            return;
+        }
+
+        $masked = $this->maskPhone($phone);
+        $safeName = e($previous->name ?: 'there');
+        $safePhone = e($masked);
+        $html = <<<HTML
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"></head>
+        <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
+          <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;">
+            <h1 style="color:#7D1B28;font-size:20px;">Safari Hub</h1>
+            <p>Hi {$safeName},</p>
+            <p>Someone is verifying the phone number <strong>{$safePhone}</strong> to link it to a different Safari Hub account. Mobile numbers can be reassigned by the operator.</p>
+            <p>Your email login still works. If this was not you, add a new phone number in Profile after this change, or contact support.</p>
+          </div>
+        </body>
+        </html>
+        HTML;
+
+        try {
+            $apiKey = config('resend.api_key');
+            $deliverTo = app()->environment('local')
+                ? ['mchaurembo@gmail.com']
+                : [$previous->email];
+            if ($apiKey && $apiKey !== 'your-resend-api-key') {
+                $this->clearProxyEnv();
+                Resend::emails()->send([
+                    'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
+                    'to' => $deliverTo,
+                    'subject' => 'Safari Hub — Phone number is being moved',
+                    'html' => $html,
+                ]);
+
+                return;
+            }
+
+            \Illuminate\Support\Facades\Mail::html($html, function ($message) use ($previous) {
+                $message->to($previous->email, $previous->name)
+                    ->subject('Safari Hub — Phone number is being moved');
+            });
+        } catch (\Exception $e) {
+            Log::warning("Phone-claim notice failed for user {$previous->id}: {$e->getMessage()}");
+        }
+    }
+
+    private function consumePhoneOtp(string $phone, string $otp, string $type): bool
+    {
+        $record = $this->findValidPhoneOtp($phone, $otp, $type);
+        if (! $record) {
             return false;
         }
 
         $record->update(['used' => true]);
 
         return true;
+    }
+
+    private function phoneOtpMatches(string $phone, string $otp, string $type): bool
+    {
+        return (bool) $this->findValidPhoneOtp($phone, $otp, $type);
+    }
+
+    private function findValidPhoneOtp(string $phone, string $otp, string $type): ?PasswordResetOtp
+    {
+        $formats = $this->phoneFormatsForLookup($phone);
+        $record = PasswordResetOtp::where('type', $type)
+            ->where('used', false)
+            ->whereIn('identifier', $formats)
+            ->latest()
+            ->first();
+
+        if (! $record || $record->isExpired() || ! Hash::check($otp, $record->otp)) {
+            return null;
+        }
+
+        return $record;
+    }
+
+    private function consumePhoneClaimOtp(string $phone, string $otp): bool
+    {
+        return $this->consumePhoneOtp($phone, $otp, 'claim');
+    }
+
+    /** POST /profile/phone-change-otp — resend OTP to the currently registered number. */
+    public function sendPhoneChangeOtp(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $currentPhone = \App\Helpers\PhoneHelper::normalize((string) $user->phone);
+        if (! $currentPhone) {
+            return response()->json([
+                'message' => 'This account has no registered phone number to verify.',
+            ], 422);
+        }
+
+        if (! app()->environment('local')) {
+            $rateLimitKey = 'otp-phone-change:' . $user->id;
+            if (RateLimiter::tooManyAttempts($rateLimitKey, 5)) {
+                $seconds = RateLimiter::availableIn($rateLimitKey);
+
+                return response()->json([
+                    'message' => "Too many OTP requests. Please wait {$seconds} seconds before trying again.",
+                ], 429);
+            }
+            RateLimiter::hit($rateLimitKey, 900);
+        }
+
+        $plainOtp = $this->issuePhoneOtp($currentPhone, 'change');
+
+        return response()->json([
+            'message' => 'OTP sent to your registered number. Enter it to confirm the phone change.',
+            'code' => 'PHONE_CHANGE_REQUIRES_OTP',
+            'phone' => $this->maskPhone($currentPhone),
+            'dev_otp' => $this->otpForClientResponse($plainOtp),
+        ]);
     }
 
     private function releasePhoneFromPreviousOwner(User $previous, string $phone): void
@@ -416,13 +560,14 @@ class AuthController extends Controller
             if ($holder && $holder->id !== ($existingUser?->id)) {
                 $phoneOtp = $validated['phone_otp'] ?? null;
                 if (! $phoneOtp) {
-                    $devOtp = $this->issuePhoneClaimOtp($phone);
+                    $plainOtp = $this->issuePhoneClaimOtp($phone);
+                    $this->sendPhoneClaimPendingEmail($holder, $phone);
 
                     return response()->json([
                         'message' => 'This phone number is on another account. Enter the OTP sent to the number to move it here. The previous account will be notified by email.',
                         'code' => 'PHONE_REQUIRES_CLAIM',
                         'phone' => $phone,
-                        'dev_otp' => $devOtp,
+                        'dev_otp' => $this->otpForClientResponse($plainOtp),
                     ], 409);
                 }
 
@@ -695,7 +840,8 @@ class AuthController extends Controller
                     }
                 }
             }],
-            'phone_otp'       => 'nullable|string|size:6',
+            'phone_otp'          => 'nullable|string|size:6',
+            'current_phone_otp'  => 'nullable|string|size:6',
         ]);
 
         $user = $request->user();
@@ -727,17 +873,40 @@ class AuthController extends Controller
             $currentPhone = \App\Helpers\PhoneHelper::normalize((string) $user->phone);
 
             if ($phone && $phone !== $currentPhone) {
+                if ($currentPhone) {
+                    $currentOtp = $validated['current_phone_otp'] ?? null;
+                    if (! $currentOtp) {
+                        $plainOtp = $this->issuePhoneOtp($currentPhone, 'change');
+
+                        return response()->json([
+                            'message' => 'Enter the OTP sent to your registered number to confirm this phone change.',
+                            'code' => 'PHONE_CHANGE_REQUIRES_OTP',
+                            'phone' => $this->maskPhone($currentPhone),
+                            'dev_otp' => $this->otpForClientResponse($plainOtp),
+                        ], 409);
+                    }
+                    if (! $this->phoneOtpMatches($currentPhone, $currentOtp, 'change')) {
+                        return response()->json([
+                            'message' => 'Invalid or expired OTP. Request a new code and try again.',
+                            'code' => 'PHONE_CHANGE_OTP_INVALID',
+                        ], 422);
+                    }
+                }
+
                 $holder = $this->findUserByPhone($phone);
                 if ($holder && $holder->id !== $user->id) {
                     $phoneOtp = $validated['phone_otp'] ?? null;
                     if (! $phoneOtp) {
-                        $devOtp = $this->issuePhoneClaimOtp($phone);
+                        $plainOtp = $this->issuePhoneClaimOtp($phone);
+                        $this->sendPhoneOtpToUserEmail($user, $plainOtp, 'claim');
+                        $this->sendPhoneClaimPendingEmail($holder, $phone);
 
                         return response()->json([
-                            'message' => 'This phone number is on another account. Enter the OTP sent to the number to move it here. The previous account will be notified by email.',
+                            'message' => 'This phone number is on another account. Enter the OTP sent to your email and to the number. The previous account is notified by email.',
                             'code' => 'PHONE_REQUIRES_CLAIM',
                             'phone' => $phone,
-                            'dev_otp' => $devOtp,
+                            'email' => $user->email ? $this->maskEmail($user->email) : null,
+                            'dev_otp' => $this->otpForClientResponse($plainOtp),
                         ], 409);
                     }
                     if (! $this->consumePhoneClaimOtp($phone, $phoneOtp)) {
@@ -748,6 +917,10 @@ class AuthController extends Controller
                     }
                     $this->releasePhoneFromPreviousOwner($holder, $phone);
                     $previousPhoneOwner = $holder;
+                }
+
+                if ($currentPhone) {
+                    $this->consumePhoneOtp($currentPhone, $validated['current_phone_otp'], 'change');
                 }
             }
             if ($phone !== $currentPhone) {
@@ -999,9 +1172,11 @@ class AuthController extends Controller
             $normalized = '+' . $phone;
         }
 
-        $smsText = $purpose === 'claim'
-            ? "Safari Hub OTP: {$otp}. Use it to move this number to your new account. Expires in 10 minutes. Do not share."
-            : "Your Safari Hub OTP is: {$otp}\nExpires in 10 minutes. Do not share.";
+        $smsText = match ($purpose) {
+            'claim' => "Safari Hub OTP: {$otp}. Use it to move this number to your new account. Expires in 10 minutes. Do not share.",
+            'change' => "Safari Hub OTP: {$otp}. Confirm changing your registered phone. Expires in 10 minutes. Do not share.",
+            default => "Your Safari Hub OTP is: {$otp}\nExpires in 10 minutes. Do not share.",
+        };
 
         $this->clearProxyEnv();
 

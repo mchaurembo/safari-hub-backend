@@ -63,6 +63,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::put('/profile', [AuthController::class, 'updateProfile']);
+    Route::post('/profile/phone-change-otp', [AuthController::class, 'sendPhoneChangeOtp']);
     Route::put('/user/password', [AuthController::class, 'changePassword']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
 
