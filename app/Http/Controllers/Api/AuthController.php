@@ -99,6 +99,244 @@ class AuthController extends Controller
         })->first();
     }
 
+    private function findUserByPhone(string $phone): ?User
+    {
+        $formats = $this->phoneFormatsForLookup($phone);
+
+        return User::where(function ($q) use ($formats) {
+            $q->whereIn('phone', $formats)->orWhereIn('whatsapp_number', $formats);
+        })->first();
+    }
+
+    /**
+     * Send OTP to a number that already belongs to another account so the
+     * new registrant can prove they hold the SIM (numbers can be reassigned).
+     */
+    public function claimPhone(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'phone' => ['required', 'string', 'max:20', 'regex:/^[\d\s\+\-\(\)\.]{10,20}$/'],
+        ]);
+
+        $phone = \App\Helpers\PhoneHelper::normalize($validated['phone']) ?? trim($validated['phone']);
+        $holder = $this->findUserByPhone($phone);
+
+        if (! $holder) {
+            return response()->json([
+                'message' => 'This phone number is available. Continue registration.',
+                'code' => 'PHONE_AVAILABLE',
+                'phone' => $phone,
+            ]);
+        }
+
+        if (! app()->environment('local')) {
+            $rateLimitKey = 'otp-claim:' . $phone;
+            if (RateLimiter::tooManyAttempts($rateLimitKey, 5)) {
+                $seconds = RateLimiter::availableIn($rateLimitKey);
+
+                return response()->json([
+                    'message' => "Too many OTP requests. Please wait {$seconds} seconds before trying again.",
+                ], 429);
+            }
+            RateLimiter::hit($rateLimitKey, 900);
+        }
+
+        $devOtp = $this->issuePhoneClaimOtp($phone);
+
+        return response()->json([
+            'message' => 'OTP sent to this number. After verification it can be moved to your new account.',
+            'code' => 'PHONE_REQUIRES_CLAIM',
+            'phone' => $phone,
+            'dev_otp' => $devOtp,
+        ]);
+    }
+
+    /** @return string|null Plain OTP in local so the UI can show it; null in production. */
+    private function issuePhoneClaimOtp(string $phone): ?string
+    {
+        PasswordResetOtp::where('identifier', $phone)
+            ->where('type', 'claim')
+            ->where('used', false)
+            ->update(['used' => true]);
+
+        $plainOtp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        PasswordResetOtp::create([
+            'identifier' => $phone,
+            'type' => 'claim',
+            'otp' => Hash::make($plainOtp),
+            'used' => false,
+            'expires_at' => Carbon::now()->addMinutes(10),
+        ]);
+
+        $error = null;
+        $this->sendOtpSms($phone, $plainOtp, $error, 'claim');
+        if ($error) {
+            Log::warning("Phone-claim OTP SMS failed for {$phone}: {$error}");
+        }
+
+        if (app()->environment('local')) {
+            Log::info("════ DEV PHONE-CLAIM OTP for {$phone} ════ {$plainOtp} ════");
+
+            return $plainOtp;
+        }
+
+        return null;
+    }
+
+    private function consumePhoneClaimOtp(string $phone, string $otp): bool
+    {
+        $formats = $this->phoneFormatsForLookup($phone);
+        $record = PasswordResetOtp::where('type', 'claim')
+            ->where('used', false)
+            ->whereIn('identifier', $formats)
+            ->latest()
+            ->first();
+
+        if (! $record || $record->isExpired() || ! Hash::check($otp, $record->otp)) {
+            return false;
+        }
+
+        $record->update(['used' => true]);
+
+        return true;
+    }
+
+    private function releasePhoneFromPreviousOwner(User $previous, string $phone): void
+    {
+        $normalized = \App\Helpers\PhoneHelper::normalize($phone) ?? $phone;
+        $formats = $this->phoneFormatsForLookup($normalized);
+        $updates = [];
+
+        $prevPhone = \App\Helpers\PhoneHelper::normalize((string) $previous->phone);
+        if ($prevPhone && in_array($prevPhone, $formats, true)) {
+            $updates['phone'] = null;
+        }
+
+        $prevWa = \App\Helpers\PhoneHelper::normalize((string) $previous->whatsapp_number);
+        if ($prevWa && in_array($prevWa, $formats, true)) {
+            $updates['whatsapp_number'] = null;
+        }
+
+        if ($updates !== []) {
+            $previous->update($updates);
+        }
+    }
+
+    private function sendPhoneTransferredEmail(User $previous, string $phone): void
+    {
+        if (! $previous->email) {
+            return;
+        }
+
+        $masked = $this->maskPhone($phone);
+        $html = $this->phoneTransferredEmailHtml($previous->name ?: 'there', $masked);
+
+        try {
+            $apiKey = config('resend.api_key');
+            if ($apiKey && $apiKey !== 'your-resend-api-key') {
+                $this->clearProxyEnv();
+                $deliverTo = app()->environment('local')
+                    ? ['mchaurembo@gmail.com']
+                    : [$previous->email];
+
+                Resend::emails()->send([
+                    'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
+                    'to' => $deliverTo,
+                    'subject' => 'Safari Hub — Phone number moved from your account',
+                    'html' => $html,
+                    'text' => "Hi {$previous->name},\n\nThe phone number {$masked} was verified by SMS and is now linked to a different Safari Hub account. Mobile numbers can be reassigned by the operator.\n\nYour email login still works. Add a new phone number in Profile if you still use Safari Hub.\n\n— Safari Hub",
+                ]);
+
+                return;
+            }
+
+            \Illuminate\Support\Facades\Mail::html($html, function ($message) use ($previous) {
+                $message->to($previous->email, $previous->name)
+                    ->subject('Safari Hub — Phone number moved from your account');
+            });
+        } catch (\Exception $e) {
+            Log::warning("Phone-transfer email failed for user {$previous->id}: {$e->getMessage()}");
+        }
+    }
+
+    private function sendEmailChangedNotice(User $user, string $oldEmail): void
+    {
+        $safeName = e($user->name ?: 'there');
+        $safeOld = e($oldEmail);
+        $safeNew = e($user->email);
+        $html = <<<HTML
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"></head>
+        <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
+          <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;">
+            <h1 style="color:#7D1B28;font-size:20px;">Safari Hub</h1>
+            <p>Hi {$safeName},</p>
+            <p>The email on your Safari Hub account was changed from <strong>{$safeOld}</strong> to <strong>{$safeNew}</strong>.</p>
+            <p>If you did not do this, sign in with your phone (if still linked) or contact support.</p>
+          </div>
+        </body>
+        </html>
+        HTML;
+
+        try {
+            $apiKey = config('resend.api_key');
+            $deliverTo = app()->environment('local')
+                ? ['mchaurembo@gmail.com']
+                : [$oldEmail];
+            if ($apiKey && $apiKey !== 'your-resend-api-key') {
+                $this->clearProxyEnv();
+                Resend::emails()->send([
+                    'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
+                    'to' => $deliverTo,
+                    'subject' => 'Safari Hub — Email address changed',
+                    'html' => $html,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning("Email-changed notice failed for user {$user->id}: {$e->getMessage()}");
+        }
+    }
+
+    private function maskPhone(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $phone) ?? '';
+        if (strlen($digits) < 4) {
+            return '****';
+        }
+
+        return str_repeat('*', max(0, strlen($digits) - 4)) . substr($digits, -4);
+    }
+
+    private function phoneTransferredEmailHtml(string $name, string $maskedPhone): string
+    {
+        $safeName = e($name);
+        $safePhone = e($maskedPhone);
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"></head>
+        <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
+          <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+            <div style="background:#7D1B28;padding:24px 32px;">
+              <h1 style="color:#fff;margin:0;font-size:22px;">Safari Hub</h1>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#333;font-size:16px;margin-top:0;">Hi <strong>{$safeName}</strong>,</p>
+              <p style="color:#555;font-size:15px;line-height:1.5;">The phone number <strong>{$safePhone}</strong> was verified by SMS and is now linked to a different Safari Hub account.</p>
+              <p style="color:#555;font-size:15px;line-height:1.5;">This can happen when a mobile number is reassigned by the operator. Your email login is unchanged. Add a new number in Profile if you still use Safari Hub.</p>
+            </div>
+            <div style="background:#f9f9f9;padding:16px 32px;text-align:center;">
+              <p style="color:#aaa;font-size:12px;margin:0;">© Safari Hub</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        HTML;
+    }
+
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -114,6 +352,7 @@ class AuthController extends Controller
             }],
             'password' => ['required', 'confirmed', Password::defaults()],
             'role'     => 'required|in:admin,owner,customer,garage_owner,technician',
+            'phone_otp' => 'nullable|string|size:6',
         ]);
 
         $email = strtolower(trim($validated['email']));
@@ -121,30 +360,52 @@ class AuthController extends Controller
             ? \App\Helpers\PhoneHelper::normalize($validated['phone'])
             : null;
 
-        // Ensure phone is unique (normalized)
+        $existingUser = User::where('email', $email)->first();
+
+        if ($existingUser && ! Hash::check($validated['password'], $existingUser->password)) {
+            return response()->json(['message' => 'Email already used or password mismatch'], 422);
+        }
+
+        if ($existingUser && $existingUser->status !== 'active') {
+            return response()->json(['message' => 'Account is not active'], 403);
+        }
+
+        $previousPhoneOwner = null;
+
+        // Phone numbers can be reassigned by the operator. If this number is on
+        // another account, require OTP from the handset, then move it.
         if ($phone !== null) {
-            $q = User::where('phone', $phone)->orWhere('whatsapp_number', $phone);
-            $existingByPhone = $q->first();
-            $existingUser = User::where('email', $email)->first();
-            if ($existingByPhone && $existingByPhone->id !== ($existingUser?->id)) {
-                return response()->json(['message' => 'This phone number is already registered.'], 422);
+            $holder = $this->findUserByPhone($phone);
+            if ($holder && $holder->id !== ($existingUser?->id)) {
+                $phoneOtp = $validated['phone_otp'] ?? null;
+                if (! $phoneOtp) {
+                    $devOtp = $this->issuePhoneClaimOtp($phone);
+
+                    return response()->json([
+                        'message' => 'This phone number is on another account. Enter the OTP sent to the number to move it here. The previous account will be notified by email.',
+                        'code' => 'PHONE_REQUIRES_CLAIM',
+                        'phone' => $phone,
+                        'dev_otp' => $devOtp,
+                    ], 409);
+                }
+
+                if (! $this->consumePhoneClaimOtp($phone, $phoneOtp)) {
+                    return response()->json([
+                        'message' => 'Invalid or expired OTP. Request a new code and try again.',
+                        'code' => 'PHONE_CLAIM_OTP_INVALID',
+                    ], 422);
+                }
+
+                $this->releasePhoneFromPreviousOwner($holder, $phone);
+                $previousPhoneOwner = $holder;
             }
         }
 
         $role = Role::firstOrCreate(['name' => $validated['role']]);
-        $existingUser = User::where('email', $email)->first();
 
         if ($existingUser) {
             // Registration with an existing email is treated as a "role update" for the same user.
             // This enables the same identity to enroll into different module roles.
-            if (! Hash::check($validated['password'], $existingUser->password)) {
-                return response()->json(['message' => 'Email already used or password mismatch'], 422);
-            }
-
-            if ($existingUser->status !== 'active') {
-                return response()->json(['message' => 'Account is not active'], 403);
-            }
-
             $existingUser->update([
                 'name'     => $validated['name'],
                 'phone'    => $phone,
@@ -193,6 +454,10 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('auth-token')->plainTextToken;
+
+        if ($previousPhoneOwner && $phone) {
+            $this->sendPhoneTransferredEmail($previousPhoneOwner, $phone);
+        }
 
         return response()->json([
             'token'      => $token,
@@ -351,12 +616,13 @@ class AuthController extends Controller
         return response()->json(['user' => $this->authUserPayload($user)]);
     }
 
-    /** PUT /profile — update name, phone, whatsapp_number */
+    /** PUT /profile — update name, email, phone, whatsapp_number */
     public function updateProfile(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'             => 'sometimes|string|max:255',
-            'phone'            => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^[\d\s\+\-\(\)\.]{10,20}$/', function ($attribute, $value, $fail) {
+            'name'            => 'sometimes|string|max:255',
+            'email'           => 'sometimes|string|email|max:255',
+            'phone'           => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^[\d\s\+\-\(\)\.]{10,20}$/', function ($attribute, $value, $fail) {
                 if ($value) {
                     $digits = preg_replace('/\D/', '', $value);
                     if (strlen($digits) < 10 || strlen($digits) > 13) {
@@ -364,7 +630,7 @@ class AuthController extends Controller
                     }
                 }
             }],
-            'whatsapp_number'  => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^[\d\s\+\-\(\)\.]{10,20}$/', function ($attribute, $value, $fail) {
+            'whatsapp_number' => ['sometimes', 'nullable', 'string', 'max:20', 'regex:/^[\d\s\+\-\(\)\.]{10,20}$/', function ($attribute, $value, $fail) {
                 if ($value) {
                     $digits = preg_replace('/\D/', '', $value);
                     if (strlen($digits) < 10 || strlen($digits) > 13) {
@@ -372,14 +638,93 @@ class AuthController extends Controller
                     }
                 }
             }],
+            'phone_otp'       => 'nullable|string|size:6',
         ]);
 
         $user = $request->user();
-        $user->update($validated);
+        $updates = [];
+        $previousPhoneOwner = null;
+        $previousEmail = null;
+
+        if (array_key_exists('name', $validated)) {
+            $updates['name'] = $validated['name'];
+        }
+
+        if (array_key_exists('email', $validated)) {
+            $email = strtolower(trim($validated['email']));
+            $taken = User::where('email', $email)->where('id', '!=', $user->id)->exists();
+            if ($taken) {
+                return response()->json(['message' => 'This email is already registered to another account.'], 422);
+            }
+            if ($email !== strtolower((string) $user->email)) {
+                $previousEmail = $user->email;
+                $updates['email'] = $email;
+            }
+        }
+
+        $phone = null;
+        if (array_key_exists('phone', $validated)) {
+            $phone = $validated['phone'] !== null && $validated['phone'] !== ''
+                ? \App\Helpers\PhoneHelper::normalize($validated['phone'])
+                : null;
+            $currentPhone = \App\Helpers\PhoneHelper::normalize((string) $user->phone);
+
+            if ($phone && $phone !== $currentPhone) {
+                $holder = $this->findUserByPhone($phone);
+                if ($holder && $holder->id !== $user->id) {
+                    $phoneOtp = $validated['phone_otp'] ?? null;
+                    if (! $phoneOtp) {
+                        $devOtp = $this->issuePhoneClaimOtp($phone);
+
+                        return response()->json([
+                            'message' => 'This phone number is on another account. Enter the OTP sent to the number to move it here. The previous account will be notified by email.',
+                            'code' => 'PHONE_REQUIRES_CLAIM',
+                            'phone' => $phone,
+                            'dev_otp' => $devOtp,
+                        ], 409);
+                    }
+                    if (! $this->consumePhoneClaimOtp($phone, $phoneOtp)) {
+                        return response()->json([
+                            'message' => 'Invalid or expired OTP. Request a new code and try again.',
+                            'code' => 'PHONE_CLAIM_OTP_INVALID',
+                        ], 422);
+                    }
+                    $this->releasePhoneFromPreviousOwner($holder, $phone);
+                    $previousPhoneOwner = $holder;
+                }
+            }
+            $updates['phone'] = $phone;
+        }
+
+        if (array_key_exists('whatsapp_number', $validated)) {
+            $whatsapp = $validated['whatsapp_number'] !== null && $validated['whatsapp_number'] !== ''
+                ? \App\Helpers\PhoneHelper::normalize($validated['whatsapp_number'])
+                : null;
+            if ($whatsapp) {
+                $waHolder = $this->findUserByPhone($whatsapp);
+                $incomingPhone = $updates['phone'] ?? \App\Helpers\PhoneHelper::normalize((string) $user->phone);
+                if ($waHolder && $waHolder->id !== $user->id && $whatsapp !== $incomingPhone) {
+                    return response()->json([
+                        'message' => 'This WhatsApp number is already registered to another account.',
+                    ], 422);
+                }
+            }
+            $updates['whatsapp_number'] = $whatsapp;
+        }
+
+        $user->update($updates);
+
+        if ($previousPhoneOwner && $phone) {
+            $this->sendPhoneTransferredEmail($previousPhoneOwner, $phone);
+        }
+
+        if ($previousEmail && $previousEmail !== ($updates['email'] ?? $previousEmail)) {
+            $this->sendEmailChangedNotice($user->fresh(), $previousEmail);
+        }
 
         return response()->json([
             'message' => 'Profile updated successfully',
-            'user'    => $this->authUserPayload($user),
+            'user'    => $this->authUserPayload($user->fresh()),
         ]);
     }
 
@@ -555,7 +900,7 @@ class AuthController extends Controller
     }
 
     /* ── Send OTP via SMS (Vonage) ───────────────────────────────────── */
-    private function sendOtpSms(string $phone, string $otp, ?string &$error): bool
+    private function sendOtpSms(string $phone, string $otp, ?string &$error, string $purpose = 'reset'): bool
     {
         // Normalize phone to E.164 (+255XXXXXXXXX for Tanzania)
         $normalized = $phone;
@@ -567,7 +912,9 @@ class AuthController extends Controller
             $normalized = '+' . $phone;
         }
 
-        $smsText = "Your Trans-Cargo OTP is: {$otp}\nExpires in 10 minutes. Do not share.";
+        $smsText = $purpose === 'claim'
+            ? "Safari Hub OTP: {$otp}. Use it to move this number to your new account. Expires in 10 minutes. Do not share."
+            : "Your Safari Hub OTP is: {$otp}\nExpires in 10 minutes. Do not share.";
 
         $this->clearProxyEnv();
 

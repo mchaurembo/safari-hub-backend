@@ -24,10 +24,11 @@ use Illuminate\Support\Facades\Route;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-// Password reset via OTP — throttled: 10 requests per minute per IP
+// Password reset + phone-claim OTP — throttled: 10 requests per minute per IP
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('/register/claim-phone', [AuthController::class, 'claimPhone']);
 });
 
 // Debug (remove after fixing)
