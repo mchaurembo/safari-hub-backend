@@ -755,10 +755,7 @@ class AuthController extends Controller
         }
 
         if ($updates === []) {
-            return response()->json([
-                'message' => 'Profile updated successfully',
-                'user'    => $this->authUserPayload($user),
-            ]);
+            return $this->profileUpdateResponse($user, 'Profile updated successfully');
         }
 
         try {
@@ -775,10 +772,27 @@ class AuthController extends Controller
             $this->sendEmailChangedNotice($user->fresh(), $previousEmail);
         }
 
-        return response()->json([
-            'message' => 'Profile updated successfully',
-            'user'    => $this->authUserPayload($user->fresh()),
-        ]);
+        return $this->profileUpdateResponse($user->fresh(), 'Profile updated successfully');
+    }
+
+    private function profileUpdateResponse(User $user, string $message): JsonResponse
+    {
+        try {
+            return response()->json([
+                'message' => $message,
+                'user'    => $this->authUserPayload($user),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Profile saved but auth payload failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => $message,
+                'user'    => $user->only(['id', 'name', 'email', 'phone', 'whatsapp_number', 'role_id', 'status']),
+            ]);
+        }
     }
 
     public function changePassword(Request $request): JsonResponse
