@@ -65,7 +65,7 @@ class SelcomPaymentGateway implements PaymentGatewayInterface
             'redirect_url' => $returnUrl,
             'cancel_url' => $returnUrl,
             'webhook' => $webhookUrl,
-            'buyer_remarks' => 'Safari Hub payment',
+            'buyer_remarks' => 'CHAPA payment',
             'merchant_remarks' => $orderId,
             'no_of_items' => 1,
         ];
@@ -291,7 +291,7 @@ class SelcomPaymentGateway implements PaymentGatewayInterface
     {
         $name = trim((string) ($payer?->name ?? ''));
 
-        return $name !== '' ? $name : 'Safari Hub Customer';
+        return $name !== '' ? $name : 'CHAPA Customer';
     }
 
     private function toSelcomMsisdn(?string $phone): ?string

@@ -245,9 +245,9 @@ class AuthController extends Controller
         <head><meta charset="UTF-8"></head>
         <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
           <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;">
-            <h1 style="color:#7D1B28;font-size:20px;">Safari Hub</h1>
+            <h1 style="color:#7D1B28;font-size:20px;">CHAPA</h1>
             <p>Hi {$safeName},</p>
-            <p>Someone is verifying the phone number <strong>{$safePhone}</strong> to link it to a different Safari Hub account. Mobile numbers can be reassigned by the operator.</p>
+            <p>Someone is verifying the phone number <strong>{$safePhone}</strong> to link it to a different CHAPA account. Mobile numbers can be reassigned by the operator.</p>
             <p>Your email login still works. If this was not you, add a new phone number in Profile after this change, or contact support.</p>
           </div>
         </body>
@@ -264,7 +264,7 @@ class AuthController extends Controller
                 Resend::emails()->send([
                     'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
                     'to' => $deliverTo,
-                    'subject' => 'Safari Hub — Phone number is being moved',
+                    'subject' => 'CHAPA — Phone number is being moved',
                     'html' => $html,
                 ]);
 
@@ -273,7 +273,7 @@ class AuthController extends Controller
 
             \Illuminate\Support\Facades\Mail::html($html, function ($message) use ($previous) {
                 $message->to($previous->email, $previous->name)
-                    ->subject('Safari Hub — Phone number is being moved');
+                    ->subject('CHAPA — Phone number is being moved');
             });
         } catch (\Throwable $e) {
             Log::warning("Phone-claim notice failed for user {$previous->id}: {$e->getMessage()}");
@@ -392,9 +392,9 @@ class AuthController extends Controller
                 Resend::emails()->send([
                     'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
                     'to' => $deliverTo,
-                    'subject' => 'Safari Hub — Phone number moved from your account',
+                    'subject' => 'CHAPA — Phone number moved from your account',
                     'html' => $html,
-                    'text' => "Hi {$previous->name},\n\nThe phone number {$masked} was verified by SMS and is now linked to a different Safari Hub account. Mobile numbers can be reassigned by the operator.\n\nYour email login still works. Add a new phone number in Profile if you still use Safari Hub.\n\n— Safari Hub",
+                    'text' => "Hi {$previous->name},\n\nThe phone number {$masked} was verified by SMS and is now linked to a different CHAPA account. Mobile numbers can be reassigned by the operator.\n\nYour email login still works. Add a new phone number in Profile if you still use CHAPA.\n\n— CHAPA",
                 ]);
 
                 return;
@@ -402,7 +402,7 @@ class AuthController extends Controller
 
             \Illuminate\Support\Facades\Mail::html($html, function ($message) use ($previous) {
                 $message->to($previous->email, $previous->name)
-                    ->subject('Safari Hub — Phone number moved from your account');
+                    ->subject('CHAPA — Phone number moved from your account');
             });
         } catch (\Throwable $e) {
             Log::warning("Phone-transfer email failed for user {$previous->id}: {$e->getMessage()}");
@@ -420,9 +420,9 @@ class AuthController extends Controller
         <head><meta charset="UTF-8"></head>
         <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
           <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;">
-            <h1 style="color:#7D1B28;font-size:20px;">Safari Hub</h1>
+            <h1 style="color:#7D1B28;font-size:20px;">CHAPA</h1>
             <p>Hi {$safeName},</p>
-            <p>The email on your Safari Hub account was changed from <strong>{$safeOld}</strong> to <strong>{$safeNew}</strong>.</p>
+            <p>The email on your CHAPA account was changed from <strong>{$safeOld}</strong> to <strong>{$safeNew}</strong>.</p>
             <p>If you did not do this, sign in with your phone (if still linked) or contact support.</p>
           </div>
         </body>
@@ -439,7 +439,7 @@ class AuthController extends Controller
                 Resend::emails()->send([
                     'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
                     'to' => $deliverTo,
-                    'subject' => 'Safari Hub — Email address changed',
+                    'subject' => 'CHAPA — Email address changed',
                     'html' => $html,
                 ]);
             }
@@ -506,15 +506,15 @@ class AuthController extends Controller
         <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
           <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
             <div style="background:#7D1B28;padding:24px 32px;">
-              <h1 style="color:#fff;margin:0;font-size:22px;">Safari Hub</h1>
+              <h1 style="color:#fff;margin:0;font-size:22px;">CHAPA</h1>
             </div>
             <div style="padding:32px;">
               <p style="color:#333;font-size:16px;margin-top:0;">Hi <strong>{$safeName}</strong>,</p>
-              <p style="color:#555;font-size:15px;line-height:1.5;">The phone number <strong>{$safePhone}</strong> was verified by SMS and is now linked to a different Safari Hub account.</p>
-              <p style="color:#555;font-size:15px;line-height:1.5;">This can happen when a mobile number is reassigned by the operator. Your email login is unchanged. Add a new number in Profile if you still use Safari Hub.</p>
+              <p style="color:#555;font-size:15px;line-height:1.5;">The phone number <strong>{$safePhone}</strong> was verified by SMS and is now linked to a different CHAPA account.</p>
+              <p style="color:#555;font-size:15px;line-height:1.5;">This can happen when a mobile number is reassigned by the operator. Your email login is unchanged. Add a new number in Profile if you still use CHAPA.</p>
             </div>
             <div style="background:#f9f9f9;padding:16px 32px;text-align:center;">
-              <p style="color:#aaa;font-size:12px;margin:0;">© Safari Hub</p>
+              <p style="color:#aaa;font-size:12px;margin:0;">© CHAPA</p>
             </div>
           </div>
         </body>
@@ -1129,9 +1129,9 @@ class AuthController extends Controller
                 Resend::emails()->send([
                     'from'    => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
                     'to'      => $deliverTo,
-                    'subject' => 'Trans-Cargo — OTP for ' . $to,
+                    'subject' => 'CHAPA — OTP for ' . $to,
                     'html'    => $this->otpEmailHtml($user->name, $otp),
-                    'text'    => "Hi {$user->name},\n\nYour Trans-Cargo password reset OTP is: {$otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\n— Trans-Cargo Team",
+                    'text'    => "Hi {$user->name},\n\nYour CHAPA password reset OTP is: {$otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\n— CHAPA Team",
                 ]);
                 return true;
             } catch (\Throwable $e) {
@@ -1146,7 +1146,7 @@ class AuthController extends Controller
                 $this->otpEmailHtml($user->name, $otp),
                 function ($message) use ($to, $user) {
                     $message->to($to, $user->name)
-                            ->subject('Trans-Cargo — Your Password Reset OTP');
+                            ->subject('CHAPA — Your Password Reset OTP');
                 }
             );
             return true;
@@ -1181,16 +1181,16 @@ class AuthController extends Controller
         }
 
         $smsText = match ($purpose) {
-            'claim' => "Safari Hub OTP: {$otp}. Use it to move this number to your new account. Expires in 10 minutes. Do not share.",
-            'change' => "Safari Hub OTP: {$otp}. Confirm changing your registered phone. Expires in 10 minutes. Do not share.",
-            default => "Your Safari Hub OTP is: {$otp}\nExpires in 10 minutes. Do not share.",
+            'claim' => "CHAPA OTP: {$otp}. Use it to move this number to your new account. Expires in 10 minutes. Do not share.",
+            'change' => "CHAPA OTP: {$otp}. Confirm changing your registered phone. Expires in 10 minutes. Do not share.",
+            default => "Your CHAPA OTP is: {$otp}\nExpires in 10 minutes. Do not share.",
         };
 
         $this->clearProxyEnv();
 
         $vonageKey    = config('services.vonage.key');
         $vonageSecret = config('services.vonage.secret');
-        $vonageFrom   = config('services.vonage.from', 'TransCargo');
+        $vonageFrom   = config('services.vonage.from', 'CHAPA');
 
         if (!$vonageKey || !$vonageSecret) {
             Log::warning("Vonage not configured — OTP for {$normalized}: {$otp}");
@@ -1219,7 +1219,7 @@ class AuthController extends Controller
         <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
           <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
             <div style="background:#1677ff;padding:24px 32px;">
-              <h1 style="color:#fff;margin:0;font-size:22px;">🚛 Trans-Cargo</h1>
+              <h1 style="color:#fff;margin:0;font-size:22px;">🚛 CHAPA</h1>
             </div>
             <div style="padding:32px;">
               <p style="color:#333;font-size:16px;margin-top:0;">Hi <strong>{$name}</strong>,</p>
@@ -1230,7 +1230,7 @@ class AuthController extends Controller
               <p style="color:#888;font-size:13px;">If you did not request this, you can safely ignore this email. Do not share this code with anyone.</p>
             </div>
             <div style="background:#f9f9f9;padding:16px 32px;text-align:center;">
-              <p style="color:#aaa;font-size:12px;margin:0;">© Trans-Cargo · Secure Password Reset</p>
+              <p style="color:#aaa;font-size:12px;margin:0;">© CHAPA · Secure Password Reset</p>
             </div>
           </div>
         </body>

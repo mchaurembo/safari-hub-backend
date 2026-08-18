@@ -42,7 +42,7 @@ class PaymentSeeder extends Seeder
         PaymentGateway::updateOrCreate(
             ['code' => 'stub'],
             [
-                'name' => 'Safari Hub Stub Gateway',
+                'name' => 'CHAPA Stub Gateway',
                 'driver' => 'stub',
                 'status' => 'active',
                 'is_default' => $defaultDriver === 'stub',

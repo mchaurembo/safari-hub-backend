@@ -38,7 +38,7 @@ return [
     'vonage' => [
         'key'    => env('VONAGE_API_KEY', ''),
         'secret' => env('VONAGE_API_SECRET', ''),
-        'from'   => env('VONAGE_FROM', 'TransCargo'),
+        'from'   => env('VONAGE_FROM', 'CHAPA'),
     ],
 
     /*

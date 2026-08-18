@@ -55,7 +55,7 @@ class PaymentWebhookController extends Controller
             <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>Safari Hub — Test Payment</title>
+              <title>CHAPA — Test Payment</title>
               <style>
                 body { font-family: system-ui, sans-serif; background: #F7F5F4; margin: 0; padding: 24px; }
                 .card { max-width: 420px; margin: 40px auto; background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 8px 24px rgba(125,27,40,0.1); }
@@ -68,7 +68,7 @@ class PaymentWebhookController extends Controller
             </head>
             <body>
               <div class="card">
-                <h1>Safari Hub test payment</h1>
+                <h1>CHAPA test payment</h1>
                 <p>No real money is charged. This simulates approving mobile money in development.</p>
                 <div class="ref">{$ref}</div>
                 <form method="post" action="">
@@ -107,7 +107,7 @@ class PaymentWebhookController extends Controller
             <style>body{font-family:system-ui,sans-serif;background:#E8F5EE;margin:0;padding:24px;text-align:center}
             .card{max-width:420px;margin:40px auto;background:#fff;border-radius:16px;padding:28px}
             h1{color:#1A7A4C}</style></head>
-            <body><div class="card"><h1>Payment confirmed</h1><p>Reference {$ref}. You can close this page and return to Safari Hub.</p></div></body></html>
+            <body><div class="card"><h1>Payment confirmed</h1><p>Reference {$ref}. You can close this page and return to CHAPA.</p></div></body></html>
             HTML, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
         }
 

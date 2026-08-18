@@ -101,7 +101,7 @@ class PaymentController extends Controller
 
         return response()->json([
             'data' => [
-                'platform' => 'Safari Hub',
+                'platform' => 'CHAPA',
                 'payment_reference' => $payment->payment_reference,
                 'gateway_reference' => $payment->gateway_reference,
                 'customer' => $payment->payer?->only(['id', 'name', 'email', 'phone']),
