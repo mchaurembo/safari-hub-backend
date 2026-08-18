@@ -683,7 +683,7 @@ class AuthController extends Controller
         $previousPhoneOwner = null;
         $previousEmail = null;
 
-        if (array_key_exists('name', $validated)) {
+        if (array_key_exists('name', $validated) && $validated['name'] !== $user->name) {
             $updates['name'] = $validated['name'];
         }
 
