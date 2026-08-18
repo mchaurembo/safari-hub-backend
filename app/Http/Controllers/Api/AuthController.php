@@ -218,10 +218,14 @@ class AuthController extends Controller
             return;
         }
 
-        $error = null;
-        $sent = $this->sendOtpEmail($user, $user->email, $otp, $error);
-        if (! $sent) {
-            Log::warning("Phone OTP email failed [{$purpose}] for user {$user->id}: {$error}");
+        try {
+            $error = null;
+            $sent = $this->sendOtpEmail($user, $user->email, $otp, $error);
+            if (! $sent) {
+                Log::warning("Phone OTP email failed [{$purpose}] for user {$user->id}: {$error}");
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Phone OTP email failed [{$purpose}] for user {$user->id}: {$e->getMessage()}");
         }
     }
 
@@ -271,7 +275,7 @@ class AuthController extends Controller
                 $message->to($previous->email, $previous->name)
                     ->subject('Safari Hub — Phone number is being moved');
             });
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::warning("Phone-claim notice failed for user {$previous->id}: {$e->getMessage()}");
         }
     }
@@ -400,7 +404,7 @@ class AuthController extends Controller
                 $message->to($previous->email, $previous->name)
                     ->subject('Safari Hub — Phone number moved from your account');
             });
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::warning("Phone-transfer email failed for user {$previous->id}: {$e->getMessage()}");
         }
     }
@@ -439,7 +443,7 @@ class AuthController extends Controller
                     'html' => $html,
                 ]);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::warning("Email-changed notice failed for user {$user->id}: {$e->getMessage()}");
         }
     }
@@ -811,6 +815,8 @@ class AuthController extends Controller
             Log::error('Profile update failed', [
                 'user_id' => $request->user()?->id,
                 'error' => $e->getMessage(),
+                'type' => $e::class,
+                'file' => $e->getFile() . ':' . $e->getLine(),
             ]);
 
             return response()->json([
@@ -920,7 +926,7 @@ class AuthController extends Controller
                 }
 
                 if ($currentPhone) {
-                    $this->consumePhoneOtp($currentPhone, $validated['current_phone_otp'], 'change');
+                    $this->consumePhoneOtp($currentPhone, $currentOtp, 'change');
                 }
             }
             if ($phone !== $currentPhone) {
@@ -1128,7 +1134,7 @@ class AuthController extends Controller
                     'text'    => "Hi {$user->name},\n\nYour Trans-Cargo password reset OTP is: {$otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\n— Trans-Cargo Team",
                 ]);
                 return true;
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $error = $e->getMessage();
                 return false;
             }
@@ -1144,7 +1150,7 @@ class AuthController extends Controller
                 }
             );
             return true;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $error = $e->getMessage();
             return false;
         }
@@ -1154,7 +1160,9 @@ class AuthController extends Controller
     private function clearProxyEnv(): void
     {
         foreach (['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY'] as $var) {
-            putenv($var);
+            if (\function_exists('putenv')) {
+                \putenv($var);
+            }
             unset($_ENV[$var], $_SERVER[$var]);
         }
     }
@@ -1194,7 +1202,7 @@ class AuthController extends Controller
             $vonage->sms()->send(new VonageSMS($normalized, $vonageFrom, $smsText));
             Log::info("SMS OTP sent via Vonage to {$normalized}");
             return true;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $error = $e->getMessage();
             Log::error("Vonage SMS failed to {$normalized}: {$error}");
             return false;

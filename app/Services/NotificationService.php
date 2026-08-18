@@ -815,7 +815,9 @@ class NotificationService
     private function clearProxyEnv(): void
     {
         foreach (['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'no_proxy'] as $v) {
-            putenv($v);
+            if (\function_exists('putenv')) {
+                \putenv($v);
+            }
             unset($_ENV[$v], $_SERVER[$v]);
         }
     }
