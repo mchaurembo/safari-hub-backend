@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\Rule;
 use Resend\Laravel\Facades\Resend;
@@ -307,6 +308,42 @@ class AuthController extends Controller
         }
 
         return str_repeat('*', max(0, strlen($digits) - 4)) . substr($digits, -4);
+    }
+
+    private function profileUpdateQueryError(QueryException $e): JsonResponse
+    {
+        $msg = $e->getMessage();
+        Log::error('Profile update failed', ['error' => $msg]);
+
+        if (str_contains($msg, 'already registered')) {
+            if (str_contains(strtolower($msg), 'whatsapp')) {
+                return response()->json([
+                    'message' => 'This WhatsApp number is already registered to another account.',
+                ], 422);
+            }
+
+            return response()->json([
+                'message' => 'This phone number is already registered to another account.',
+            ], 422);
+        }
+
+        if (str_contains($msg, 'chk_phone_10_to_13_digits')
+            || str_contains($msg, 'chk_whatsapp_10_to_13_digits')
+            || str_contains($msg, 'Check constraint')) {
+            return response()->json([
+                'message' => 'Phone or WhatsApp number must be 10-13 digits. Fix the number and try again.',
+            ], 422);
+        }
+
+        if (str_contains($msg, 'Unknown column')) {
+            return response()->json([
+                'message' => 'Profile update is not available until the server database is updated. Please contact support.',
+            ], 503);
+        }
+
+        return response()->json([
+            'message' => 'Could not update profile. Please try again or contact support.',
+        ], 500);
     }
 
     private function phoneTransferredEmailHtml(string $name, string $maskedPhone): string
@@ -693,13 +730,16 @@ class AuthController extends Controller
                     $previousPhoneOwner = $holder;
                 }
             }
-            $updates['phone'] = $phone;
+            if ($phone !== $currentPhone) {
+                $updates['phone'] = $phone;
+            }
         }
 
         if (array_key_exists('whatsapp_number', $validated)) {
             $whatsapp = $validated['whatsapp_number'] !== null && $validated['whatsapp_number'] !== ''
                 ? \App\Helpers\PhoneHelper::normalize($validated['whatsapp_number'])
                 : null;
+            $currentWhatsapp = \App\Helpers\PhoneHelper::normalize((string) $user->whatsapp_number);
             if ($whatsapp) {
                 $waHolder = $this->findUserByPhone($whatsapp);
                 $incomingPhone = $updates['phone'] ?? \App\Helpers\PhoneHelper::normalize((string) $user->phone);
@@ -709,10 +749,23 @@ class AuthController extends Controller
                     ], 422);
                 }
             }
-            $updates['whatsapp_number'] = $whatsapp;
+            if ($whatsapp !== $currentWhatsapp) {
+                $updates['whatsapp_number'] = $whatsapp;
+            }
         }
 
-        $user->update($updates);
+        if ($updates === []) {
+            return response()->json([
+                'message' => 'Profile updated successfully',
+                'user'    => $this->authUserPayload($user),
+            ]);
+        }
+
+        try {
+            $user->update($updates);
+        } catch (QueryException $e) {
+            return $this->profileUpdateQueryError($e);
+        }
 
         if ($previousPhoneOwner && $phone) {
             $this->sendPhoneTransferredEmail($previousPhoneOwner, $phone);
