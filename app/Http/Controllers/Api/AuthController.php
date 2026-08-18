@@ -656,6 +656,26 @@ class AuthController extends Controller
     /** PUT /profile — update name, email, phone, whatsapp_number */
     public function updateProfile(Request $request): JsonResponse
     {
+        try {
+            return $this->performProfileUpdate($request);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (QueryException $e) {
+            return $this->profileUpdateQueryError($e);
+        } catch (\Throwable $e) {
+            Log::error('Profile update failed', [
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Could not update profile. Please try again.',
+            ], 500);
+        }
+    }
+
+    private function performProfileUpdate(Request $request): JsonResponse
+    {
         $validated = $request->validate([
             'name'            => 'sometimes|string|max:255',
             'email'           => 'sometimes|string|email|max:255',
