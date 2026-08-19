@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\MailRecipient;
 use Illuminate\Support\Facades\Log;
 use Resend\Laravel\Facades\Resend;
 use Vonage\Client as VonageClient;
@@ -599,7 +600,7 @@ class NotificationService
             return;
         }
 
-        $to = app()->environment('local') ? 'mchaurembo@gmail.com' : $email;
+        $to = MailRecipient::address($email);
 
         try {
             Resend::emails()->send([

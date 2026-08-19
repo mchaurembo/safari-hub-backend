@@ -12,6 +12,7 @@ use App\Models\TransportOwner;
 use App\Models\User;
 use App\Services\EmploymentService;
 use App\Support\AuthUserPresenter;
+use App\Support\MailRecipient;
 use Vonage\Client as VonageClient;
 use Vonage\Client\Credentials\Basic as VonageBasic;
 use Vonage\SMS\Message\SMS as VonageSMS;
@@ -256,9 +257,7 @@ class AuthController extends Controller
 
         try {
             $apiKey = config('resend.api_key');
-            $deliverTo = app()->environment('local')
-                ? ['mchaurembo@gmail.com']
-                : [$previous->email];
+            $deliverTo = MailRecipient::to((string) $previous->email);
             if ($apiKey && $apiKey !== 'your-resend-api-key') {
                 $this->clearProxyEnv();
                 Resend::emails()->send([
@@ -385,9 +384,7 @@ class AuthController extends Controller
             $apiKey = config('resend.api_key');
             if ($apiKey && $apiKey !== 'your-resend-api-key') {
                 $this->clearProxyEnv();
-                $deliverTo = app()->environment('local')
-                    ? ['mchaurembo@gmail.com']
-                    : [$previous->email];
+                $deliverTo = MailRecipient::to((string) $previous->email);
 
                 Resend::emails()->send([
                     'from' => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
@@ -431,9 +428,7 @@ class AuthController extends Controller
 
         try {
             $apiKey = config('resend.api_key');
-            $deliverTo = app()->environment('local')
-                ? ['mchaurembo@gmail.com']
-                : [$oldEmail];
+            $deliverTo = MailRecipient::to($oldEmail);
             if ($apiKey && $apiKey !== 'your-resend-api-key') {
                 $this->clearProxyEnv();
                 Resend::emails()->send([
@@ -1119,12 +1114,7 @@ class AuthController extends Controller
                 // Bypass any proxy (e.g. Cursor IDE proxy) for outbound API calls
                 $this->clearProxyEnv();
 
-                // In local dev with onboarding@resend.dev sender, Resend only
-                // delivers to the Resend account owner's email. We force-redirect
-                // all test emails to that address so delivery always works.
-                $deliverTo = app()->environment('local')
-                    ? ['mchaurembo@gmail.com']
-                    : [$to];
+                $deliverTo = MailRecipient::to($to);
 
                 Resend::emails()->send([
                     'from'    => config('mail.from.name') . ' <' . config('mail.from.address') . '>',

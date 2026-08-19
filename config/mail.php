@@ -115,4 +115,10 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    | Leave empty so mail goes to the real user. Set only for local testing
+    | (e.g. Resend onboarding sender which only delivers to one inbox).
+    */
+    'redirect_to' => env('MAIL_REDIRECT_TO', ''),
+
 ];
