@@ -13,6 +13,7 @@ use App\Policies\PaymentPolicy;
 use App\Policies\VehiclePolicy;
 use App\Policies\WorkOrderPolicy;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -30,6 +31,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $appUrl = (string) config('app.url', '');
+        if (str_starts_with($appUrl, 'https://') || filter_var(env('FORCE_HTTPS', false), FILTER_VALIDATE_BOOL)) {
+            URL::forceScheme('https');
+        }
+
         Gate::policy(Vehicle::class, VehiclePolicy::class);
         Gate::policy(Garage::class, GaragePolicy::class);
         Gate::policy(GarageBooking::class, GarageBookingPolicy::class);

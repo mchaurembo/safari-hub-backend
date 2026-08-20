@@ -5,6 +5,11 @@
 
     RewriteEngine On
 
+    # Prefer HTTPS when Cloudways/nginx did not already redirect.
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
     # Prefer Laravel for "/" so SPA shell can send no-cache headers.
     DirectoryIndex index.php
 

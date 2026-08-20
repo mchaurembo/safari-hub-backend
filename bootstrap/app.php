@@ -16,7 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('payments:expire-stale')->hourly();
     })
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Cloudways / nginx terminates TLS and sends X-Forwarded-Proto.
+        $middleware->trustProxies(at: '*');
+        $middleware->web(append: [
+            \App\Http\Middleware\ForceHttps::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
