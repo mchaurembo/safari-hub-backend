@@ -284,7 +284,7 @@ class SelcomPaymentGateway implements PaymentGatewayInterface
     {
         $email = trim((string) ($payer?->email ?? ''));
 
-        return $email !== '' ? $email : 'payments@safarihub.space';
+        return $email !== '' ? $email : 'payments@chapa.it.com';
     }
 
     private function buyerName(?User $payer): string

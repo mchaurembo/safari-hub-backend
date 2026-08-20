@@ -12,6 +12,10 @@ final class MailRecipient
 
     public static function address(string $email): string
     {
+        if (app()->environment('production')) {
+            return $email;
+        }
+
         $redirect = trim((string) config('mail.redirect_to', ''));
 
         return $redirect !== '' ? $redirect : $email;

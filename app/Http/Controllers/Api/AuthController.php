@@ -1076,18 +1076,43 @@ class AuthController extends Controller
             'expires_at' => Carbon::now()->addMinutes(10),
         ]);
 
-        // ── Send OTP ──────────────────────────────────────────────
-        $sent = false;
-        $error = null;
+        // ── Send OTP (email path also SMS; phone path also email when available) ──
+        $emailError = null;
+        $smsError = null;
+        $emailSent = false;
+        $smsSent = false;
+
+        $accountEmail = $user->email ? strtolower(trim((string) $user->email)) : null;
+        $accountPhone = $this->resetOtpPhoneForUser($user);
 
         if ($type === 'email') {
-            $sent = $this->sendOtpEmail($user, $identifier, $plainOtp, $error);
+            $emailSent = $this->sendOtpEmail($user, $identifier, $plainOtp, $emailError);
+            if ($accountPhone) {
+                $smsSent = $this->sendOtpSms($accountPhone, $plainOtp, $smsError);
+            }
         } else {
-            $sent = $this->sendOtpSms($identifier, $plainOtp, $error);
+            $smsSent = $this->sendOtpSms($identifier, $plainOtp, $smsError);
+            if ($accountEmail) {
+                $emailSent = $this->sendOtpEmail($user, $accountEmail, $plainOtp, $emailError);
+            }
         }
 
+        $sent = $emailSent || $smsSent;
+
         if (!$sent) {
+            $error = trim(implode(' | ', array_filter([$emailError, $smsError])));
             Log::warning("OTP delivery failed [{$type}] to {$identifier}: {$error}");
+
+            return response()->json([
+                'message' => 'Could not send the OTP. Please try again.',
+            ], 503);
+        }
+
+        if ($type === 'email' && ! $emailSent) {
+            Log::warning("OTP email failed for {$identifier}; SMS fallback used: {$emailError}");
+        }
+        if ($type === 'phone' && ! $smsSent) {
+            Log::warning("OTP SMS failed for {$identifier}; email fallback used: {$smsError}");
         }
 
         // Always return OTP in local dev (shown on screen as large dev-mode box)
@@ -1098,8 +1123,16 @@ class AuthController extends Controller
             Log::info("════ DEV OTP for {$identifier} ════ {$plainOtp} ════");
         }
 
+        $channels = array_values(array_filter([
+            $emailSent ? 'email' : null,
+            $smsSent ? 'sms' : null,
+        ]));
+
         return response()->json([
-            'message' => 'OTP sent successfully. Check your ' . $type . '.',
+            'message' => $emailSent && $smsSent
+                ? 'OTP sent successfully. Check your email and SMS.'
+                : 'OTP sent successfully. Check your ' . ($emailSent ? 'email' : 'phone') . '.',
+            'delivered_via' => $channels,
             'dev_otp' => $devOtp,
         ]);
     }
@@ -1107,17 +1140,23 @@ class AuthController extends Controller
     /* ── Send OTP via Resend (email) ─────────────────────────────── */
     private function sendOtpEmail(User $user, string $to, string $otp, ?string &$error): bool
     {
-        $apiKey = config('resend.api_key');
+        $apiKey = config('resend.api_key') ?: config('services.resend.key');
+        $fromAddress = (string) config('mail.from.address');
+        $fromName = (string) config('mail.from.name', 'CHAPA');
+        $deliverTo = MailRecipient::to($to);
+
+        if (str_contains(strtolower($fromAddress), 'onboarding@resend.dev')) {
+            Log::warning("OTP email using Resend test sender {$fromAddress}; other inboxes may not receive mail. Verify your domain and set MAIL_FROM_ADDRESS.");
+        }
 
         if ($apiKey && $apiKey !== 'your-resend-api-key') {
             try {
-                // Bypass any proxy (e.g. Cursor IDE proxy) for outbound API calls
                 $this->clearProxyEnv();
 
-                $deliverTo = MailRecipient::to($to);
+                Log::info("Sending OTP email intended={$to} deliver_to=".implode(',', $deliverTo)." from={$fromAddress}");
 
                 Resend::emails()->send([
-                    'from'    => config('mail.from.name') . ' <' . config('mail.from.address') . '>',
+                    'from'    => $fromName . ' <' . $fromAddress . '>',
                     'to'      => $deliverTo,
                     'subject' => 'CHAPA — OTP for ' . $to,
                     'html'    => $this->otpEmailHtml($user->name, $otp),
@@ -1126,6 +1165,7 @@ class AuthController extends Controller
                 return true;
             } catch (\Throwable $e) {
                 $error = $e->getMessage();
+                Log::error("OTP email failed intended={$to} deliver_to=".implode(',', $deliverTo)." from={$fromAddress}: {$error}");
                 return false;
             }
         }
@@ -1135,7 +1175,7 @@ class AuthController extends Controller
             \Illuminate\Support\Facades\Mail::html(
                 $this->otpEmailHtml($user->name, $otp),
                 function ($message) use ($to, $user) {
-                    $message->to($to, $user->name)
+                    $message->to(MailRecipient::address($to), $user->name)
                             ->subject('CHAPA — Your Password Reset OTP');
                 }
             );
@@ -1155,6 +1195,12 @@ class AuthController extends Controller
             }
             unset($_ENV[$var], $_SERVER[$var]);
         }
+    }
+
+    private function resetOtpPhoneForUser(User $user): ?string
+    {
+        return \App\Helpers\PhoneHelper::normalize((string) $user->phone)
+            ?? \App\Helpers\PhoneHelper::normalize((string) $user->whatsapp_number);
     }
 
     /* ── Send OTP via SMS (Vonage) ───────────────────────────────────── */

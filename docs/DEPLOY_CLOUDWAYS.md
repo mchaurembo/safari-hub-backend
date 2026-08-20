@@ -29,7 +29,7 @@ safari-hub/
 |-----------|---------|
 | Jina la UI | `Safari Hub 360 – Production` |
 | Folder / DB | `equsfzucxz` |
-| Domain | `https://www.safarihub.space` |
+| Domain | `http://www.chapa.it.com` |
 | Path SSH | `~/applications/equsfzucxz/public_html` |
 | Document root | `public/` (Laravel) |
 | Git repo | `safari-hub-backend` branch `main` |
@@ -71,7 +71,7 @@ git remote -v
 ### 2.2 Cloudways — Application
 
 1. Unda **PHP** app (Laravel).
-2. **Domain Management** → ongeza `safarihub.space` + `www.safarihub.space`.
+2. **Domain Management** → ongeza `chapa.it.com` + `www.chapa.it.com`.
 3. **SSL Certificate** → weka SSL kwa domains zote.
 4. **Application Settings** → document root = `public`.
 5. **Deployment via Git**:
@@ -101,7 +101,7 @@ Viwanja muhimu:
 APP_NAME="Safari Hub 360"
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://www.safarihub.space
+APP_URL=http://www.chapa.it.com
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -118,7 +118,7 @@ SELCOM_BASE_URL=https://apigw.selcommobile.com
 SELCOM_VENDOR=YOUR_VENDOR_ID
 SELCOM_API_KEY=
 SELCOM_API_SECRET=
-# Webhook: https://www.safarihub.space/api/payments/webhooks/selcom
+# Webhook: http://www.chapa.it.com/api/payments/webhooks/selcom
 ```
 
 Kisha:
@@ -244,20 +244,20 @@ php artisan view:cache
 
 ```bash
 # SPA
-curl -sS https://www.safarihub.space/ | grep -o 'index-[^"]*\.js'
+curl -sS http://www.chapa.it.com/ | grep -o 'index-[^"]*\.js'
 
 # API
-curl -sS https://www.safarihub.space/api/routes | head -c 200
+curl -sS http://www.chapa.it.com/api/routes | head -c 200
 echo
 
 # Login (badilisha password)
-curl -sS -X POST https://www.safarihub.space/api/login \
+curl -sS -X POST http://www.chapa.it.com/api/login \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -d '{"identifier":"admin@safarihub360.com","password":"YOUR_PASSWORD"}'
 ```
 
-Browser: Incognito → https://www.safarihub.space/login
+Browser: Incognito → http://www.chapa.it.com/login
 
 ---
 
@@ -353,10 +353,10 @@ echo Hash::check('password', \App\Models\User::where('email','admin@safarihub360
 
 ## 7. Domain, SSL, Cloudflare
 
-1. Domains zote mbili: `safarihub.space` + `www.safarihub.space`  
+1. Domains zote mbili: `chapa.it.com` + `www.chapa.it.com`  
 2. SSL kwa zote  
 3. Cloudflare SSL mode: **Full (strict)**  
-4. Jaribu kila mara `https://www.safarihub.space` (apex inaweza kuwa na SSL tofauti)
+4. Jaribu kila mara `http://www.chapa.it.com` (apex inaweza kuwa na SSL tofauti)
 
 Usifute app ya Cloudways yenye DB `equsfzucxz`. App tupu nyingine (`gvsctvjnta` n.k.) inaweza kufutwa **baada** ya kuthibitisha domain iko kwenye production pekee.
 
@@ -393,7 +393,7 @@ Usifute app ya Cloudways yenye DB `equsfzucxz`. App tupu nyingine (`gvsctvjnta` 
 ### Test login (SSH au lokal)
 
 ```bash
-curl -sS -X POST https://www.safarihub.space/api/login \
+curl -sS -X POST http://www.chapa.it.com/api/login \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -d '{"identifier":"admin@safarihub360.com","password":"YOUR_PASSWORD"}'
@@ -406,7 +406,7 @@ curl -sS -X POST https://www.safarihub.space/api/login \
 ```bash
 cd ~/Documents/APPS/safari-hub/mobile
 # Weka API URL ya production kwenye env ya Expo
-# mfano: EXPO_PUBLIC_API_URL=https://www.safarihub.space/api
+# mfano: EXPO_PUBLIC_API_URL=http://www.chapa.it.com/api
 ```
 
 Deploy ya mobile ni Expo / store — si Git → Cloudways.

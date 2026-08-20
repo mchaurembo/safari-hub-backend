@@ -28,7 +28,7 @@ Usiweke funguo hizi kwenye frontend au mobile — ziko backend pekee.
 Sajili URL hii kwenye Selcom dashboard:
 
 ```
-https://www.safarihub.space/api/payments/webhooks/selcom
+http://www.chapa.it.com/api/payments/webhooks/selcom
 ```
 
 (Lokal: `https://your-ngrok-url/api/payments/webhooks/selcom`)
