@@ -26,6 +26,32 @@ class PaymentController extends Controller
         return response()->json(['data' => $methods]);
     }
 
+    /** Unified payment history for the authenticated customer (all CHAPA services). */
+    public function index(Request $request): JsonResponse
+    {
+        $status = $request->input('status');
+        $query = Payment::query()
+            ->where('payer_id', $request->user()->id)
+            ->with(['gateway', 'payable']);
+
+        if ($status) {
+            $query->where('status', $status);
+        }
+
+        $perPage = min(50, max(1, (int) $request->integer('per_page', 20)));
+        $page = $query->orderByDesc('id')->paginate($perPage);
+
+        $page->getCollection()->transform(function (Payment $payment) {
+            $row = $this->present($payment);
+            $row['service_label'] = $this->serviceLabel($payment->payable_type);
+            $row['booking_reference'] = $this->bookingReference($payment);
+
+            return $row;
+        });
+
+        return response()->json($page);
+    }
+
     public function store(Request $request, PaymentService $payments): JsonResponse
     {
         $validated = $request->validate([
@@ -173,6 +199,16 @@ class PaymentController extends Controller
         $fare = $trip?->price ?? 0;
 
         return (string) $fare;
+    }
+
+    protected function serviceLabel(?string $payableType): string
+    {
+        return match ($payableType) {
+            'booking', 'transport_booking', Booking::class => 'Passenger Transport',
+            'garage_booking', GarageBooking::class => 'Garage Service',
+            'cargo_request', CargoRequest::class => 'Cargo',
+            default => 'CHAPA Service',
+        };
     }
 
     protected function bookingReference(Payment $payment): ?string

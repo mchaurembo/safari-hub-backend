@@ -123,7 +123,14 @@ class GarageController extends Controller
         $user = $request->user();
         $garage = $this->resolveGarage($user);
         if (! $garage) {
-            return response()->json(['message' => 'No garage profile found. Enroll as garage owner first.'], 404);
+            $message = 'No garage profile found. Create your garage to continue.';
+            if ($user->hasCapability('technician') && ! $user->hasCapability('garage_owner')) {
+                $message = 'No garage linked yet. Join a garage as a technician first.';
+            } elseif ($user->hasCapability('technician')) {
+                $message = 'No garage profile found. Create your garage or join one as a technician.';
+            }
+
+            return response()->json(['message' => $message], 404);
         }
 
         $isOwner = $garage->owner_id === $user->id;

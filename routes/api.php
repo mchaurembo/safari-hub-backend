@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CargoController;
+use App\Http\Controllers\Api\CustomerGarageController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\DriverController;
 use App\Http\Controllers\Api\GarageController;
@@ -159,12 +160,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/complaints', [AdminController::class, 'complaints']);
     Route::post('/admin/complaints/{complaint}/resolve', [AdminController::class, 'resolveComplaint']);
 
-    // Payments — customer
+    // Payments — customer (unified across transport + garage)
     Route::get('/payments/methods', [PaymentController::class, 'methods']);
+    Route::get('/payments', [PaymentController::class, 'index']);
     Route::post('/payments', [PaymentController::class, 'store']);
     Route::get('/payments/{payment}', [PaymentController::class, 'show']);
     Route::post('/payments/{payment}/retry', [PaymentController::class, 'retry']);
     Route::get('/payments/{payment}/receipt', [PaymentController::class, 'receipt']);
+
+    // Customer garage marketplace (same CHAPA customer account)
+    Route::get('/customer/garages', [CustomerGarageController::class, 'index']);
+    Route::get('/customer/garages/{garage}', [CustomerGarageController::class, 'show']);
+    Route::get('/customer/garage-bookings', [CustomerGarageController::class, 'bookings']);
+    Route::post('/customer/garage-bookings', [CustomerGarageController::class, 'storeBooking']);
 
     // Payments — admin
     Route::get('/admin/payments/dashboard', [AdminPaymentController::class, 'dashboard']);

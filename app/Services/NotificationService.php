@@ -23,7 +23,7 @@ use Vonage\SMS\Message\SMS as VonageSMS;
  */
 class NotificationService
 {
-    /* CHAPA brand palette (matches web/mobile) */
+    /* CHAPA Group brand palette (matches web/mobile) */
     private const BRAND_PRIMARY = '#7D1B28';
 
     private const BRAND_PRIMARY_DARK = '#5C1420';
@@ -90,11 +90,11 @@ class NotificationService
         $html = $this->wrap(
             "Hi <strong>{$driverName}</strong>, you have a new cargo request waiting for your quote.",
             $this->table($rows),
-            $this->callout('⏳ Log in to CHAPA to send your quote', self::BRAND_WARNING, self::BRAND_WARNING_BG),
+            $this->callout('⏳ Log in to CHAPA Group to send your quote', self::BRAND_WARNING, self::BRAND_WARNING_BG),
             '🚛 New Cargo Request'
         );
 
-        $sms = "CHAPA: New cargo request from {$customerName}.\n"
+        $sms = "CHAPA Group: New cargo request from {$customerName}.\n"
              ."From: {$pickupAddress}\nTo: {$destAddress} ({$distanceKm}km).\n"
              ."Budget: {$budgetFmt}. Log in to quote.";
 
@@ -129,16 +129,16 @@ class NotificationService
         $html = $this->wrap(
             "Hi <strong>{$customerName}</strong>, your driver has sent a price quote for your cargo request.",
             $this->table($rows),
-            $this->callout('✅ Log in to CHAPA to accept or decline', self::BRAND_SUCCESS, self::BRAND_SUCCESS_BG),
+            $this->callout('✅ Log in to CHAPA Group to accept or decline', self::BRAND_SUCCESS, self::BRAND_SUCCESS_BG),
             '💬 Driver Quoted a Price'
         );
 
-        $sms = "CHAPA: {$driverName} quoted {$priceFmt} for your cargo.\n"
+        $sms = "CHAPA Group: {$driverName} quoted {$priceFmt} for your cargo.\n"
              ."From: {$pickupAddress} → {$destAddress}.\n"
              .'Log in to accept or decline.';
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
-            "Driver Quoted {$priceFmt} — CHAPA", $html, $sms,
+            "Driver Quoted {$priceFmt} — CHAPA Group", $html, $sms,
             $customerWhatsapp ?? $customerPhone);
     }
 
@@ -170,11 +170,11 @@ class NotificationService
             '✅ Quote Accepted'
         );
 
-        $sms = "CHAPA: {$customerName} accepted your quote of {$priceFmt}.\n"
+        $sms = "CHAPA Group: {$customerName} accepted your quote of {$priceFmt}.\n"
              ."Pickup: {$pickupAddress}. Head there now.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
-            'Quote Accepted — CHAPA', $html, $sms,
+            'Quote Accepted — CHAPA Group', $html, $sms,
             $driverWhatsapp ?? $driverPhone);
     }
 
@@ -205,10 +205,10 @@ class NotificationService
             '❌ Quote Declined'
         );
 
-        $sms = "CHAPA: {$customerName} declined your quote of {$priceFmt} for the trip from {$pickupAddress}.";
+        $sms = "CHAPA Group: {$customerName} declined your quote of {$priceFmt} for the trip from {$pickupAddress}.";
 
         $this->dispatch($driverName, $driverEmail, $driverPhone,
-            'Quote Declined — CHAPA', $html, $sms,
+            'Quote Declined — CHAPA Group', $html, $sms,
             $driverWhatsapp ?? $driverPhone);
     }
 
@@ -238,11 +238,11 @@ class NotificationService
             '🚛 Trip Started'
         );
 
-        $sms = "CHAPA: Your cargo trip has started.\n"
+        $sms = "CHAPA Group: Your cargo trip has started.\n"
              ."Driver: {$driverName}. From {$pickupAddress} to {$destAddress}.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
-            'Your Cargo Trip Has Started — CHAPA', $html, $sms,
+            'Your Cargo Trip Has Started — CHAPA Group', $html, $sms,
             $customerWhatsapp ?? $customerPhone);
     }
 
@@ -272,7 +272,7 @@ class NotificationService
             '📦 Cargo Delivered'
         );
 
-        $sms = "CHAPA: Your cargo has been delivered to {$destAddress} by {$driverName}.\n"
+        $sms = "CHAPA Group: Your cargo has been delivered to {$destAddress} by {$driverName}.\n"
              ."Amount: {$priceFmt}. Log in to confirm.";
 
         $this->dispatch($customerName, $customerEmail, $customerPhone,
@@ -313,7 +313,7 @@ class NotificationService
         );
 
         $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
-        $sms = "CHAPA (Garage): Your {$serviceName} has started at {$garageName}."
+        $sms = "CHAPA Group (Garage): Your {$serviceName} has started at {$garageName}."
              ." Technician: {$technicianName}.{$vehicleLine}";
 
         $this->dispatchAllChannels($customerName, $customerEmail, $customerPhone,
@@ -364,7 +364,7 @@ class NotificationService
 
         $vehicleLine = $vehicleReg ? " Vehicle: {$vehicleReg}." : '';
         $amountLine = $amountFmt ? " Amount: {$amountFmt}." : '';
-        $sms = "CHAPA (Garage): Your {$serviceName} at {$garageName} is complete."
+        $sms = "CHAPA Group (Garage): Your {$serviceName} at {$garageName} is complete."
              ." Technician: {$technicianName}.{$vehicleLine}{$amountLine}";
 
         $detail = trim('Technician: '.$technicianName
@@ -423,17 +423,17 @@ class NotificationService
         }
 
         $html = $this->wrap(
-            "Hi <strong>{$customerName}</strong>, here is your CHAPA payment update.",
+            "Hi <strong>{$customerName}</strong>, here is your CHAPA Group payment update.",
             $this->table($rows),
             $this->callout(
-                $success ? '✓ Keep this reference for your records' : 'Open CHAPA to retry or view status',
+                $success ? '✓ Keep this reference for your records' : 'Open CHAPA Group to retry or view status',
                 $success ? self::BRAND_SUCCESS : self::BRAND_INFO,
                 $success ? self::BRAND_SUCCESS_BG : self::BRAND_INFO_BG
             ),
             "💳 {$title}"
         );
 
-        $sms = "CHAPA: {$title}. Ref {$paymentReference}. {$amountFormatted} via {$method}. Status: {$status}."
+        $sms = "CHAPA Group: {$title}. Ref {$paymentReference}. {$amountFormatted} via {$method}. Status: {$status}."
             .($bookingReference ? " Booking: {$bookingReference}." : '');
 
         $this->dispatch(
@@ -604,7 +604,7 @@ class NotificationService
 
         try {
             Resend::emails()->send([
-                'from' => config('mail.from.name', 'CHAPA').' <'.config('mail.from.address', 'onboarding@resend.dev').'>',
+                'from' => config('mail.from.name', 'CHAPA Group').' <'.config('mail.from.address', 'onboarding@resend.dev').'>',
                 'to' => [$to],
                 'subject' => $subject,
                 'html' => $html,
@@ -855,7 +855,7 @@ class NotificationService
         </div>";
     }
 
-    /** Wrap content in the CHAPA branded email shell */
+    /** Wrap content in the CHAPA Group branded email shell */
     private function wrap(string $intro, string $table, string $callout, string $header): string
     {
         $primary = self::BRAND_PRIMARY;
@@ -877,7 +877,7 @@ class NotificationService
                       overflow:hidden;box-shadow:0 8px 28px rgba(125,27,40,0.12);border:1px solid {$border};">
             <div style="background-color:{$primary};background:linear-gradient(135deg, {$primary} 0%, {$primaryDark} 70%, {$gold} 160%);padding:22px 28px;">
               <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;font-weight:700;">
-                <span style="color:#FFFFFF !important;">CHAPA</span>
+                <span style="color:#FFFFFF !important;">CHAPA Group</span>
               </div>
               <div style="margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em;line-height:1.35;">
                 <span style="color:#FFFFFF !important;">{$header}</span>
@@ -889,11 +889,11 @@ class NotificationService
               {$table}
               {$callout}
               <p style="color:{$muted};font-size:12px;margin-bottom:0;line-height:1.5;">
-                Do not reply to this email. Log in to CHAPA to take action.
+                Do not reply to this email. Log in to CHAPA Group to take action.
               </p>
             </div>
             <div style="background:{$rowAlt};padding:14px 28px;text-align:center;border-top:1px solid {$border};">
-              <p style="color:{$muted};font-size:11px;margin:0;">© CHAPA · Connecting People. Powering Opportunity.</p>
+              <p style="color:{$muted};font-size:11px;margin:0;">© CHAPA Group · Connecting People. Powering Opportunity.</p>
             </div>
           </div>
         </body>
