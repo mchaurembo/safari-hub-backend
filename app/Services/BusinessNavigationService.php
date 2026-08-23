@@ -46,7 +46,30 @@ class BusinessNavigationService
             ];
         }
 
-        return $modules;
+        return $this->consolidateWorkshopSidebar($modules, $business);
+    }
+
+    /**
+     * Garage / car wash: bookings, customers, and inventory live inside Manage garage.
+     * Hide duplicate sidebar rows and customer-payments until owner finance UI exists.
+     *
+     * @param  list<array<string, mixed>>  $modules
+     * @return list<array<string, mixed>>
+     */
+    private function consolidateWorkshopSidebar(array $modules, $business): array
+    {
+        $business->loadMissing('type');
+        $type = $business->type?->code;
+        if (! in_array($type, ['garage', 'car_wash'], true)) {
+            return $modules;
+        }
+
+        $hideKeys = ['bookings', 'customers', 'inventory', 'payments'];
+
+        return array_values(array_filter(
+            $modules,
+            fn (array $m) => ! in_array($m['key'] ?? '', $hideKeys, true),
+        ));
     }
 
     /**
@@ -82,7 +105,7 @@ class BusinessNavigationService
             ],
             [
                 'key' => 'garage_ops',
-                'label' => 'Garage Operations',
+                'label' => 'Manage garage',
                 'group' => 'operations',
                 'icon' => 'garage',
                 'capability' => 'work_order_management',
