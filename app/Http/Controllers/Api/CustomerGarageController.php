@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Garage;
 use App\Models\GarageBooking;
 use App\Models\GarageService;
-use App\Services\Garage\GarageWorkflowService;
+use App\Services\GarageWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
