@@ -32,7 +32,7 @@ class VehiclePolicy
             return true;
         }
 
-        $fleet = $user->transportOwner;
+        $fleet = $user->accessibleTransportFleet();
 
         return $user->hasPermission('vehicle.create')
             && $fleet

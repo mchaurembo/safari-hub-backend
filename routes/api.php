@@ -94,6 +94,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/owner/revenue', [OwnerController::class, 'revenue']);
     Route::get('/owner/cargo-trips', [OwnerController::class, 'cargoTrips']);
     Route::get('/owner/earnings', [OwnerController::class, 'earnings']);
+    Route::get('/owner/managers', [OwnerController::class, 'managers']);
+    Route::get('/owner/managers/lookup', [OwnerController::class, 'lookupManagerEmail']);
+    Route::post('/owner/managers', [OwnerController::class, 'storeManager']);
+    Route::put('/owner/managers/{user}', [OwnerController::class, 'updateManager']);
+    Route::delete('/owner/managers/{user}', [OwnerController::class, 'destroyManager']);
 
     // Owner - search available drivers
     Route::get('/owner/available-drivers', [OwnerController::class, 'availableDrivers']);
@@ -202,6 +207,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/garage/technicians', [GarageController::class, 'technicians']);
     Route::post('/garage/technicians', [GarageController::class, 'storeTechnician']);
     Route::put('/garage/technicians/{technician}', [GarageController::class, 'updateTechnician']);
+
+    Route::get('/garage/managers', [GarageController::class, 'managers']);
+    Route::get('/garage/managers/lookup', [GarageController::class, 'lookupManagerEmail']);
+    Route::post('/garage/managers', [GarageController::class, 'storeManager']);
+    Route::put('/garage/managers/{user}', [GarageController::class, 'updateManager']);
+    Route::delete('/garage/managers/{user}', [GarageController::class, 'destroyManager']);
 
     Route::get('/garage/customers', [GarageController::class, 'customers']);
     Route::put('/garage/customers/{customer}', [GarageController::class, 'updateCustomer']);

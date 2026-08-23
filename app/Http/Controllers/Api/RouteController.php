@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\Route;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class RouteController extends Controller
 {
+    use ResolvesTransportFleet;
+
     public function index(Request $request): JsonResponse
     {
         $query = Route::query();
@@ -28,10 +31,9 @@ class RouteController extends Controller
     /** Transport owners can add passenger routes (origin → destination). */
     public function store(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $owner = $user?->transportOwner;
+        $owner = $this->transportFleet($request);
         if (! $owner || $owner->status !== 'approved') {
-            return response()->json(['message' => 'Transport owner not approved'], 403);
+            return response()->json(['message' => 'Fleet not approved'], 403);
         }
 
         $validated = $request->validate([

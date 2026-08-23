@@ -13,7 +13,7 @@ class AuthUserPresenter
     public static function present(User $user): array
     {
         $user->refreshLegacyPrimaryRole();
-        $user->loadMissing(['role', 'roles', 'transportOwner', 'driver', 'garages', 'technicians']);
+        $user->loadMissing(['role', 'roles', 'transportOwner', 'driver', 'garages', 'technicians', 'garageMemberships', 'employmentRelationships']);
 
         $capabilities = $user->capabilitySummaries();
         $permissions = $user->permissionCodes();
@@ -23,6 +23,11 @@ class AuthUserPresenter
         $payload['capabilities'] = $capabilities;
         $payload['permissions'] = $permissions;
         $payload['workspaces'] = $workspaces;
+
+        $managedFleet = $user->managedTransportFleet();
+        if ($managedFleet) {
+            $payload['managed_transport_owner'] = $managedFleet->toArray();
+        }
 
         // Legacy clients still read user.role — derive from preferred capability if missing.
         if (empty($payload['role'])) {
@@ -49,8 +54,10 @@ class AuthUserPresenter
         $has = fn (string $code) => in_array($code, $active, true);
 
         $fleet = $user->transportOwner;
+        $managedFleet = $user->managedTransportFleet();
         $garageCount = $user->garages->count();
-        $techCount = $user->technicians->count();
+        $activeTechnician = $user->hasActiveTechnicianWorkspace();
+        $managerGarageMembership = $user->activeGarageManagerMembership();
 
         $list = [
             [
@@ -87,9 +94,30 @@ class AuthUserPresenter
             ],
             [
                 'id' => 'technician',
-                'available' => $has('technician') && $techCount > 0,
-                'reason' => $has('technician') && $techCount === 0 ? 'technician_link_missing' : null,
-                'resources' => $techCount > 0 ? ['technician_links' => $techCount] : null,
+                'available' => $has('technician') && $activeTechnician,
+                'reason' => $has('technician') && ! $activeTechnician
+                    ? ($user->technicians()->exists() ? 'technician_deactivated' : 'technician_link_missing')
+                    : null,
+                'resources' => $activeTechnician ? [
+                    'technician_links' => $user->technicians()->whereIn('status', ['active', 'busy'])->count(),
+                ] : null,
+            ],
+            [
+                'id' => 'transport_manager',
+                'available' => $has('transport_manager') && (bool) $managedFleet,
+                'reason' => $has('transport_manager') && ! $managedFleet ? 'awaiting_fleet_assignment' : null,
+                'resources' => $managedFleet ? [
+                    'fleet_id' => $managedFleet->id,
+                    'fleet_status' => $managedFleet->status,
+                ] : null,
+            ],
+            [
+                'id' => 'garage_manager',
+                'available' => $has('garage_manager') && (bool) $managerGarageMembership,
+                'reason' => $has('garage_manager') && ! $managerGarageMembership ? 'awaiting_garage_assignment' : null,
+                'resources' => $managerGarageMembership ? [
+                    'garage_id' => $managerGarageMembership->garage_id,
+                ] : null,
             ],
             [
                 'id' => 'admin',

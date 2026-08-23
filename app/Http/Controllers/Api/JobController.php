@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\JobPosting;
 use App\Models\JobApplication;
 use App\Services\EmploymentService;
@@ -11,6 +12,8 @@ use InvalidArgumentException;
 
 class JobController extends Controller
 {
+    use ResolvesTransportFleet;
+
     public function __construct(private EmploymentService $employment) {}
     /* ─────────────────────────────────────────────
        OWNER  endpoints
@@ -19,7 +22,7 @@ class JobController extends Controller
     /** List all job postings for the authenticated owner */
     public function ownerPostings(Request $request)
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner) return response()->json(['message' => 'Owner profile not found'], 404);
 
         $postings = JobPosting::with(['applications.driver.user'])
@@ -33,7 +36,7 @@ class JobController extends Controller
     /** Create a new job posting */
     public function createPosting(Request $request)
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner) return response()->json(['message' => 'Owner profile not found'], 404);
         if ($owner->status !== 'approved') return response()->json(['message' => 'Account not approved'], 403);
 
@@ -58,7 +61,7 @@ class JobController extends Controller
     /** Update a posting (title, description, status, etc.) */
     public function updatePosting(Request $request, JobPosting $posting)
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $posting->transport_owner_id !== $owner->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -81,7 +84,7 @@ class JobController extends Controller
     /** Delete a posting */
     public function deletePosting(Request $request, JobPosting $posting)
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $posting->transport_owner_id !== $owner->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -92,7 +95,7 @@ class JobController extends Controller
     /** List applications for a specific posting */
     public function postingApplications(Request $request, JobPosting $posting)
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $posting->transport_owner_id !== $owner->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -119,7 +122,7 @@ class JobController extends Controller
     /** Accept or reject an application */
     public function reviewApplication(Request $request, JobApplication $application)
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $application->posting->transport_owner_id !== $owner->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }

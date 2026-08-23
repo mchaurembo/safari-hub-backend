@@ -277,6 +277,155 @@ class EmploymentService
         return $this->ensureGarageMembership($garage, $owner, GarageMember::TYPE_OWNER);
     }
 
+    /**
+     * Assign a user as operational manager for a transport fleet.
+     * Grants transport_manager capability — not self-enrollable.
+     */
+    /**
+     * Find an existing user by email or create a new staff login.
+     *
+     * @return array{0: User, 1: bool} user and whether the account was newly created
+     */
+    public function resolveOrCreateStaffUser(array $validated): array
+    {
+        $email = strtolower(trim($validated['email']));
+        $existing = User::where('email', $email)->first();
+
+        if ($existing) {
+            return [$existing, false];
+        }
+
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $email,
+            'phone' => $validated['phone'] ?? null,
+            'password' => $validated['password'] ?? 'password',
+            'status' => 'active',
+        ]);
+
+        return [$user, true];
+    }
+
+    public function employTransportManager(TransportOwner $fleet, User $user): EmploymentRelationship
+    {
+        if (! $user->hasCapability('transport_manager')) {
+            $user->enrollCapability('transport_manager');
+        }
+
+        return DB::transaction(function () use ($fleet, $user) {
+            $rel = $this->upsertEmployment(
+                EmploymentRelationship::EMPLOYER_TRANSPORT,
+                $fleet->id,
+                $user->id,
+                EmploymentRelationship::TYPE_STAFF,
+                'manager'
+            );
+
+            $this->audit->log('transport_manager.employed', $rel, null, [
+                'fleet_id' => $fleet->id,
+                'user_id' => $user->id,
+            ]);
+
+            return $rel;
+        });
+    }
+
+    public function releaseTransportManager(TransportOwner $fleet, User $user): void
+    {
+        DB::transaction(function () use ($fleet, $user) {
+            EmploymentRelationship::query()
+                ->where('employer_type', EmploymentRelationship::EMPLOYER_TRANSPORT)
+                ->where('employer_id', $fleet->id)
+                ->where('employee_user_id', $user->id)
+                ->where('employment_type', EmploymentRelationship::TYPE_STAFF)
+                ->where('position', 'manager')
+                ->where('status', 'active')
+                ->update([
+                    'status' => 'ended',
+                    'end_date' => now()->toDateString(),
+                ]);
+
+            $stillManaging = EmploymentRelationship::query()
+                ->where('employer_type', EmploymentRelationship::EMPLOYER_TRANSPORT)
+                ->where('employee_user_id', $user->id)
+                ->where('employment_type', EmploymentRelationship::TYPE_STAFF)
+                ->where('position', 'manager')
+                ->where('status', 'active')
+                ->exists();
+
+            if (! $stillManaging) {
+                $user->unenrollCapability('transport_manager');
+            }
+
+            $this->audit->log('transport_manager.released', $user, null, [
+                'fleet_id' => $fleet->id,
+                'user_id' => $user->id,
+            ]);
+        });
+    }
+
+    /**
+     * Assign a user as operational manager for a garage workshop.
+     */
+    public function employGarageManager(Garage $garage, User $user): GarageMember
+    {
+        if (! $user->hasCapability('garage_manager')) {
+            $user->enrollCapability('garage_manager');
+        }
+
+        return DB::transaction(function () use ($garage, $user) {
+            $member = $this->ensureGarageMembership($garage, $user, GarageMember::TYPE_MANAGER);
+            $this->upsertEmployment(
+                EmploymentRelationship::EMPLOYER_GARAGE,
+                $garage->id,
+                $user->id,
+                EmploymentRelationship::TYPE_STAFF,
+                'manager'
+            );
+
+            $this->audit->log('garage_manager.employed', $member, null, [
+                'garage_id' => $garage->id,
+                'user_id' => $user->id,
+            ]);
+
+            return $member;
+        });
+    }
+
+    public function releaseGarageManager(Garage $garage, User $user): void
+    {
+        DB::transaction(function () use ($garage, $user) {
+            $this->endGarageMembership($garage, $user, GarageMember::TYPE_MANAGER);
+
+            EmploymentRelationship::query()
+                ->where('employer_type', EmploymentRelationship::EMPLOYER_GARAGE)
+                ->where('employer_id', $garage->id)
+                ->where('employee_user_id', $user->id)
+                ->where('employment_type', EmploymentRelationship::TYPE_STAFF)
+                ->where('position', 'manager')
+                ->where('status', 'active')
+                ->update([
+                    'status' => 'ended',
+                    'end_date' => now()->toDateString(),
+                ]);
+
+            $stillManaging = $user->garageMemberships()
+                ->where('membership_type', GarageMember::TYPE_MANAGER)
+                ->where('status', 'active')
+                ->whereNull('left_at')
+                ->exists();
+
+            if (! $stillManaging) {
+                $user->unenrollCapability('garage_manager');
+            }
+
+            $this->audit->log('garage_manager.released', $user, null, [
+                'garage_id' => $garage->id,
+                'user_id' => $user->id,
+            ]);
+        });
+    }
+
     private function upsertEmployment(
         string $employerType,
         int $employerId,

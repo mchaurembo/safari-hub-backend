@@ -14,7 +14,7 @@ class GaragePolicy
         }
 
         if ($user->ownsGarage($garage)) {
-            return $user->hasPermission('garage.view') || $user->hasCapability('garage_owner');
+            return $user->hasPermission('garage.view') || $user->hasGarageStaffCapability();
         }
 
         if ($user->isGarageTechnician($garage)) {
@@ -38,7 +38,7 @@ class GaragePolicy
         }
 
         return $user->ownsGarage($garage)
-            && ($user->hasPermission('garage.update') || $user->hasCapability('garage_owner'));
+            && ($user->hasPermission('garage.update') || $user->hasGarageStaffCapability());
     }
 
     public function manageServices(User $user, Garage $garage): bool
@@ -48,6 +48,6 @@ class GaragePolicy
         }
 
         return $user->ownsGarage($garage)
-            && ($user->hasPermission('garage.manage_services') || $user->hasCapability('garage_owner'));
+            && ($user->hasPermission('garage.manage_services') || $user->hasGarageStaffCapability());
     }
 }

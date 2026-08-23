@@ -91,6 +91,21 @@ class PermissionSeeder extends Seeder
                 'work_order.view', 'work_order.update', 'work_order.complete',
                 'technician.view',
             ],
+            'transport_manager' => [
+                'vehicle.view', 'vehicle.create', 'vehicle.update', 'vehicle.delete', 'vehicle.assign_driver',
+                'driver.view', 'driver.invite', 'driver.assign_vehicle', 'driver.remove',
+                'booking.view', 'trip.view', 'trip.manage',
+                'report.view', 'financial_report.view',
+                'garage_booking.create', 'garage_booking.view',
+            ],
+            'garage_manager' => [
+                'garage.view', 'garage.update', 'garage.manage_services',
+                'technician.view', 'technician.assign', 'technician.remove',
+                'garage_booking.view', 'garage_booking.manage',
+                'work_order.view', 'work_order.update', 'work_order.complete',
+                'report.view', 'financial_report.view',
+                'booking.create', 'booking.view',
+            ],
             'admin' => Permission::query()->pluck('code')->all(),
         ];
 

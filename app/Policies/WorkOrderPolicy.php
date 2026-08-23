@@ -23,7 +23,7 @@ class WorkOrderPolicy
         }
 
         if ($user->ownsGarage($garage)) {
-            return $user->hasPermission('work_order.view') || $user->hasCapability('garage_owner');
+            return $user->hasPermission('work_order.view') || $user->hasGarageStaffCapability();
         }
 
         if ($user->isGarageTechnician($garage)) {
@@ -47,7 +47,7 @@ class WorkOrderPolicy
         }
 
         if ($user->ownsGarage($garage)) {
-            return $user->hasPermission('work_order.update') || $user->hasCapability('garage_owner');
+            return $user->hasPermission('work_order.update') || $user->hasGarageStaffCapability();
         }
 
         if ($user->isGarageTechnician($garage)) {
@@ -65,7 +65,7 @@ class WorkOrderPolicy
     {
         return $this->update($user, $workOrder)
             && ($user->hasPermission('work_order.complete')
-                || $user->hasCapability('garage_owner')
+                || $user->hasGarageStaffCapability()
                 || $user->hasCapability('technician')
                 || $user->hasCapability('admin'));
     }

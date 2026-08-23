@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\Driver;
 use App\Services\EmploymentService;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +12,8 @@ use InvalidArgumentException;
 
 class DriverController extends Controller
 {
+    use ResolvesTransportFleet;
+
     public function __construct(private EmploymentService $employment) {}
 
     /**
@@ -19,9 +22,9 @@ class DriverController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $owner->status !== 'approved') {
-            return response()->json(['message' => 'Transport owner not approved'], 403);
+            return response()->json(['message' => 'Fleet not approved'], 403);
         }
 
         $validated = $request->validate([
@@ -46,7 +49,7 @@ class DriverController extends Controller
 
     public function update(Request $request, Driver $driver): JsonResponse
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $driver->owner_id !== $owner->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -64,7 +67,7 @@ class DriverController extends Controller
 
     public function destroy(Request $request, Driver $driver): JsonResponse
     {
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
         if (!$owner || $driver->owner_id !== $owner->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }

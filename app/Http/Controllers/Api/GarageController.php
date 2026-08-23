@@ -7,6 +7,7 @@ use App\Helpers\PhoneHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Garage;
 use App\Models\GarageBooking;
+use App\Models\GarageMember;
 use App\Models\GarageService;
 use App\Models\Role;
 use App\Models\Technician;
@@ -124,7 +125,9 @@ class GarageController extends Controller
         $garage = $this->resolveGarage($user);
         if (! $garage) {
             $message = 'No garage profile found. Create your garage to continue.';
-            if ($user->hasCapability('technician') && ! $user->hasCapability('garage_owner')) {
+            if ($user->hasCapability('garage_manager') && ! $user->hasCapability('garage_owner')) {
+                $message = 'No garage assignment yet. A garage owner must add you as manager first.';
+            } elseif ($user->hasCapability('technician') && ! $user->hasCapability('garage_owner')) {
                 $message = 'No garage linked yet. Join a garage as a technician first.';
             } elseif ($user->hasCapability('technician')) {
                 $message = 'No garage profile found. Create your garage or join one as a technician.';
@@ -133,13 +136,14 @@ class GarageController extends Controller
             return response()->json(['message' => $message], 404);
         }
 
-        $isOwner = $garage->owner_id === $user->id;
+        $canManageGarage = $user->ownsGarage($garage);
+        $isOwner = (int) $garage->owner_id === (int) $user->id;
         $tech = Technician::where('user_id', $user->id)->where('garage_id', $garage->id)->first();
-        $roleContext = $isOwner ? 'owner' : 'technician';
+        $roleContext = $isOwner ? 'owner' : ($canManageGarage ? 'manager' : 'technician');
 
         $today = Carbon::today();
         $bookings = GarageBooking::where('garage_id', $garage->id);
-        if (! $isOwner && $tech) {
+        if (! $canManageGarage && $tech) {
             $bookings->where('technician_id', $tech->id);
         }
 
@@ -152,16 +156,16 @@ class GarageController extends Controller
             'in_progress' => (clone $bookings)->where('status', 'in_progress')->count(),
             'completed' => (clone $bookings)->where('status', 'completed')->count(),
             'cancelled' => (clone $bookings)->where('status', 'cancelled')->count(),
-            'technicians' => $isOwner ? $garage->technicians()->where('status', 'active')->count() : null,
-            'services' => $isOwner ? $garage->services()->where('status', 'active')->count() : null,
-            'revenue' => $isOwner
+            'technicians' => $canManageGarage ? $garage->technicians()->where('status', 'active')->count() : null,
+            'services' => $canManageGarage ? $garage->services()->where('status', 'active')->count() : null,
+            'revenue' => $canManageGarage
                 ? (float) GarageBooking::where('garage_id', $garage->id)->where('status', 'completed')->sum('amount')
                 : null,
         ];
 
         $recentQuery = GarageBooking::with(['customer:id,name,email,phone', 'service:id,name,price', 'technician.user:id,name'])
             ->where('garage_id', $garage->id);
-        if (! $isOwner && $tech) {
+        if (! $canManageGarage && $tech) {
             $recentQuery->where('technician_id', $tech->id);
         }
 
@@ -362,17 +366,23 @@ class GarageController extends Controller
 
         if (isset($validated['status'])) {
             if ($validated['status'] === 'active') {
+                if (! $technician->user->hasCapability('technician')) {
+                    $technician->user->enrollCapability('technician');
+                }
                 $this->employment->ensureGarageMembership(
                     $garage,
                     $technician->user,
                     \App\Models\GarageMember::TYPE_TECHNICIAN
                 );
-            } else {
+            } elseif ($validated['status'] === 'inactive') {
                 $this->employment->endGarageMembership(
                     $garage,
                     $technician->user,
                     \App\Models\GarageMember::TYPE_TECHNICIAN
                 );
+                if (! $technician->user->fresh()->hasActiveTechnicianWorkspace()) {
+                    $technician->user->unenrollCapability('technician');
+                }
             }
         }
 
@@ -686,7 +696,8 @@ class GarageController extends Controller
         $this->authorize('manage', $booking);
 
         $garage = $booking->garage;
-        $isOwner = $garage && $garage->owner_id === $request->user()->id;
+        $user = $request->user();
+        $canManageGarage = $garage && $user->ownsGarage($garage);
 
         $rules = [
             'status' => 'sometimes|in:'.implode(',', GarageBooking::STATUSES),
@@ -695,7 +706,7 @@ class GarageController extends Controller
             'scheduled_at' => 'nullable|date',
             'amount' => 'nullable|numeric|min:0',
         ];
-        if ($isOwner) {
+        if ($canManageGarage) {
             $rules['technician_id'] = [
                 'nullable',
                 Rule::exists('technicians', 'id')->where('garage_id', $garage->id),
@@ -709,7 +720,7 @@ class GarageController extends Controller
         $validated = $request->validate($rules);
 
         // Technicians: only operational status changes on their assigned jobs
-        if (! $isOwner) {
+        if (! $canManageGarage) {
             unset($validated['technician_id'], $validated['service_id'], $validated['amount'], $validated['scheduled_at']);
             if (isset($validated['status'])) {
                 $allowed = ['in_progress', 'completed'];
@@ -728,7 +739,7 @@ class GarageController extends Controller
             }
         }
 
-        if ($isOwner && array_key_exists('technician_id', $validated) && $validated['technician_id'] && ($validated['status'] ?? $booking->status) === 'pending') {
+        if ($canManageGarage && array_key_exists('technician_id', $validated) && $validated['technician_id'] && ($validated['status'] ?? $booking->status) === 'pending') {
             $validated['status'] = $validated['status'] ?? 'assigned';
         }
 
@@ -846,6 +857,162 @@ class GarageController extends Controller
     {
         return $user->hasCapability('technician')
             && ! $user->hasCapability('garage_owner')
+            && ! $user->hasCapability('garage_manager')
             && ! Garage::where('owner_id', $user->id)->exists();
+    }
+
+    /** Only the garage business owner (not an operational manager) may hire/release managers. */
+    private function requireGarageBusinessOwner(User $user): Garage
+    {
+        $garage = Garage::where('owner_id', $user->id)->first();
+        abort_unless($garage, 403, 'Only the garage owner can manage garage managers.');
+
+        return $garage;
+    }
+
+    public function managers(Request $request): JsonResponse
+    {
+        $garage = $this->requireGarageBusinessOwner($request->user());
+
+        $managers = $garage->members()
+            ->where('membership_type', GarageMember::TYPE_MANAGER)
+            ->with('user:id,name,email,phone')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('user_id')
+            ->map(function (GarageMember $member) {
+                $user = $member->user;
+                if (! $user) {
+                    return null;
+                }
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'status' => ($member->status === 'active' && $member->left_at === null) ? 'active' : 'inactive',
+                ];
+            })
+            ->filter()
+            ->values();
+
+        return response()->json(['data' => $managers]);
+    }
+
+    /**
+     * Check whether a manager email already belongs to an account.
+     */
+    public function lookupManagerEmail(Request $request): JsonResponse
+    {
+        $this->requireGarageBusinessOwner($request->user());
+
+        $validated = $request->validate([
+            'email' => 'required|email|max:255',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $user = User::where('email', $email)->first();
+
+        return response()->json([
+            'exists' => (bool) $user,
+            'user' => $user?->only(['id', 'name', 'email', 'phone']),
+        ]);
+    }
+
+    /**
+     * Create a garage manager login (same pattern as Add Technician).
+     */
+    public function storeManager(Request $request): JsonResponse
+    {
+        $garage = $this->requireGarageBusinessOwner($request->user());
+
+        $email = strtolower(trim((string) $request->input('email')));
+        $existingUser = User::where('email', $email)->first();
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'phone' => 'nullable|string|max:30',
+            'password' => 'nullable|string|min:6',
+        ]);
+
+        if ($existingUser) {
+            unset($validated['password']);
+            $validated['name'] = $existingUser->name;
+            $validated['phone'] = $existingUser->phone;
+        }
+
+        [$user, $created] = DB::transaction(function () use ($validated, $garage) {
+            [$user, $created] = $this->employment->resolveOrCreateStaffUser($validated);
+
+            if ((int) $user->id === (int) $garage->owner_id) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'email' => ['You cannot add yourself as a manager.'],
+                ]);
+            }
+
+            $this->employment->employGarageManager($garage, $user);
+
+            return [$user, $created];
+        });
+
+        return response()->json([
+            'message' => $created
+                ? 'Garage manager account created'
+                : 'Garage manager workspace added to existing account',
+            'linked_existing' => ! $created,
+            'data' => $user->only(['id', 'name', 'email', 'phone']),
+            'user' => \App\Support\AuthUserPresenter::present($user->fresh()),
+        ], $created ? 201 : 200);
+    }
+
+    public function updateManager(Request $request, User $user): JsonResponse
+    {
+        $garage = $this->requireGarageBusinessOwner($request->user());
+
+        $validated = $request->validate([
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        $assigned = $garage->members()
+            ->where('membership_type', GarageMember::TYPE_MANAGER)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (! $assigned) {
+            return response()->json(['message' => 'Manager not found for this garage'], 404);
+        }
+
+        if ($validated['status'] === 'active') {
+            $this->employment->employGarageManager($garage, $user);
+        } else {
+            $this->employment->releaseGarageManager($garage, $user);
+        }
+
+        $active = $validated['status'] === 'active';
+
+        return response()->json([
+            'message' => $active ? 'Garage manager activated' : 'Garage manager deactivated',
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'status' => $active ? 'active' : 'inactive',
+            ],
+            'user' => \App\Support\AuthUserPresenter::present($user->fresh()),
+        ]);
+    }
+
+    public function destroyManager(Request $request, User $user): JsonResponse
+    {
+        $garage = $this->requireGarageBusinessOwner($request->user());
+        $this->employment->releaseGarageManager($garage, $user);
+
+        return response()->json([
+            'message' => 'Garage manager removed',
+            'user' => \App\Support\AuthUserPresenter::present($user->fresh()),
+        ]);
     }
 }

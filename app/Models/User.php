@@ -190,7 +190,7 @@ class User extends Authenticatable
      */
     public function preferredPrimaryRole(): ?Role
     {
-        $priority = ['admin', 'owner', 'garage_owner', 'driver', 'technician', 'customer'];
+        $priority = ['admin', 'owner', 'transport_manager', 'garage_owner', 'garage_manager', 'driver', 'technician', 'customer'];
         $codes = $this->activeCapabilityCodes();
 
         foreach ($priority as $code) {
@@ -291,9 +291,70 @@ class User extends Authenticatable
             ->all();
     }
 
+    public function managedTransportFleet(): ?TransportOwner
+    {
+        $rel = $this->employmentRelationships()
+            ->where('employer_type', EmploymentRelationship::EMPLOYER_TRANSPORT)
+            ->where('employment_type', EmploymentRelationship::TYPE_STAFF)
+            ->where('position', 'manager')
+            ->where('status', 'active')
+            ->first();
+
+        return $rel ? TransportOwner::find($rel->employer_id) : null;
+    }
+
+    /** Fleet the user owns or manages operationally. */
+    public function accessibleTransportFleet(): ?TransportOwner
+    {
+        return $this->transportOwner ?? $this->managedTransportFleet();
+    }
+
+    public function hasTransportStaffCapability(): bool
+    {
+        return $this->hasCapability('owner') || $this->hasCapability('transport_manager');
+    }
+
+    public function hasGarageStaffCapability(): bool
+    {
+        return $this->hasCapability('garage_owner') || $this->hasCapability('garage_manager');
+    }
+
+    public function staffManagesGarage(Garage $garage): bool
+    {
+        if (! $this->ownsGarage($garage)) {
+            return false;
+        }
+
+        return $this->hasGarageStaffCapability() || $this->hasPermission('garage.view');
+    }
+
+    public function activeGarageManagerMembership(): ?GarageMember
+    {
+        return $this->garageMemberships()
+            ->where('membership_type', GarageMember::TYPE_MANAGER)
+            ->where('status', 'active')
+            ->whereNull('left_at')
+            ->latest('id')
+            ->first();
+    }
+
+    /** Active technician assignment at any garage (not deactivated). */
+    public function hasActiveTechnicianWorkspace(): bool
+    {
+        if ($this->technicians()->whereIn('status', ['active', 'busy'])->exists()) {
+            return true;
+        }
+
+        return $this->garageMemberships()
+            ->where('membership_type', GarageMember::TYPE_TECHNICIAN)
+            ->where('status', 'active')
+            ->whereNull('left_at')
+            ->exists();
+    }
+
     public function ownsFleetVehicle(Vehicle $vehicle): bool
     {
-        $fleet = $this->transportOwner;
+        $fleet = $this->accessibleTransportFleet();
 
         return $fleet && (int) $vehicle->owner_id === (int) $fleet->id;
     }

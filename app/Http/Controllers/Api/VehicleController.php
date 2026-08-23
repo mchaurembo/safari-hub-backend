@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\Driver;
 use App\Models\Vehicle;
 use App\Services\AuditLogger;
@@ -11,13 +12,18 @@ use Illuminate\Http\Request;
 
 class VehicleController extends Controller
 {
+    use ResolvesTransportFleet;
+
     public function __construct(private AuditLogger $audit) {}
 
     public function store(Request $request): JsonResponse
     {
         $this->authorize('create', Vehicle::class);
 
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
+        if (! $owner) {
+            return response()->json(['message' => 'No fleet access'], 403);
+        }
 
         $validated = $request->validate([
             'vehicle_number' => 'required|string|max:50',
@@ -67,7 +73,10 @@ class VehicleController extends Controller
     {
         $this->authorize('assignDriver', $vehicle);
 
-        $owner = $request->user()->transportOwner;
+        $owner = $this->transportFleet($request);
+        if (! $owner) {
+            return response()->json(['message' => 'No fleet access'], 403);
+        }
 
         $validated = $request->validate(['driver_id' => 'required|exists:drivers,id']);
 

@@ -23,7 +23,7 @@ class GarageBookingPolicy
         }
 
         if ($user->ownsGarage($garage)) {
-            return $user->hasPermission('garage_booking.view') || $user->hasCapability('garage_owner');
+            return $user->hasPermission('garage_booking.view') || $user->hasGarageStaffCapability();
         }
 
         if ($user->isGarageTechnician($garage)) {
@@ -54,7 +54,7 @@ class GarageBookingPolicy
         }
 
         if ($user->ownsGarage($garage)) {
-            return $user->hasPermission('garage_booking.manage') || $user->hasCapability('garage_owner');
+            return $user->hasPermission('garage_booking.manage') || $user->hasGarageStaffCapability();
         }
 
         if ($user->isGarageTechnician($garage)) {

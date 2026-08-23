@@ -72,6 +72,13 @@ class AuthController extends Controller
         return AuthUserPresenter::present($user->fresh());
     }
 
+    /** @return list<string> */
+    private function selfEnrollableRoles(User $user): array
+    {
+        // Managers are granted by business owners (same as technician hire) — not self-enrolled.
+        return ['customer', 'owner', 'garage_owner', 'technician'];
+    }
+
     /** Return all common formats for a Tanzanian phone (handles legacy DB formats). */
     private function phoneFormatsForLookup(string $input): array
     {
@@ -657,12 +664,14 @@ class AuthController extends Controller
      */
     public function enrollRole(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $allowed = $this->selfEnrollableRoles($user);
+
         $validated = $request->validate([
-            'role' => 'required|in:customer,owner,garage_owner,technician',
+            'role' => ['required', Rule::in($allowed)],
         ]);
 
         $role = Role::firstOrCreate(['name' => $validated['role']]);
-        $user = $request->user();
 
         $user->enrollCapability($role);
         $this->ensurePivotRoles($user);
@@ -689,11 +698,13 @@ class AuthController extends Controller
      */
     public function unenrollRole(Request $request, EmploymentService $employment): JsonResponse
     {
+        $user = $request->user();
+        $allowed = $this->selfEnrollableRoles($user);
+
         $validated = $request->validate([
-            'role' => 'required|in:customer,owner,garage_owner,technician',
+            'role' => ['required', Rule::in($allowed)],
         ]);
 
-        $user = $request->user();
         $role = $validated['role'];
 
         if (! $user->hasCapability($role)) {
@@ -716,6 +727,43 @@ class AuthController extends Controller
                 }
                 $releasedDrivers = $employment->releaseFleetDrivers($fleet);
             }
+        }
+
+        if ($role === 'transport_manager') {
+            $fleet = $user->managedTransportFleet();
+            if ($fleet) {
+                $employment->releaseTransportManager($fleet, $user);
+            } else {
+                $user->unenrollCapability($role);
+            }
+
+            return response()->json([
+                'message' => 'Capability removed. Bookings, payments, and history stay on this account.',
+                'history_preserved' => true,
+                'released_drivers' => 0,
+                'user' => $this->authUserPayload($user->fresh()),
+            ]);
+        }
+
+        if ($role === 'garage_manager') {
+            $membership = $user->activeGarageManagerMembership();
+            if ($membership?->garage_id) {
+                $garage = Garage::find($membership->garage_id);
+                if ($garage) {
+                    $employment->releaseGarageManager($garage, $user);
+                } else {
+                    $user->unenrollCapability($role);
+                }
+            } else {
+                $user->unenrollCapability($role);
+            }
+
+            return response()->json([
+                'message' => 'Capability removed. Bookings, payments, and history stay on this account.',
+                'history_preserved' => true,
+                'released_drivers' => 0,
+                'user' => $this->authUserPayload($user->fresh()),
+            ]);
         }
 
         $user->unenrollCapability($role);
@@ -1107,6 +1155,17 @@ class AuthController extends Controller
             $error = trim(implode(' | ', array_filter([$emailError, $smsError])));
             Log::warning("OTP delivery failed [{$type}] to {$identifier}: {$error}");
 
+            $devOtp = $this->otpForClientResponse($plainOtp);
+            if ($devOtp !== null) {
+                Log::info("════ DEV OTP for {$identifier} ════ {$plainOtp} ════");
+
+                return response()->json([
+                    'message' => 'OTP generated. Delivery is unavailable in this environment — use the code shown below.',
+                    'delivered_via' => [],
+                    'dev_otp' => $devOtp,
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Could not send the OTP. Please try again.',
             ], 503);
@@ -1166,11 +1225,12 @@ class AuthController extends Controller
                     'html'    => $this->otpEmailHtml($user->name, $otp),
                     'text'    => "Hi {$user->name},\n\nYour CHAPA Group password reset OTP is: {$otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\n— CHAPA Group Team",
                 ]);
+
                 return true;
             } catch (\Throwable $e) {
                 $error = $e->getMessage();
                 Log::error("OTP email failed intended={$to} deliver_to=".implode(',', $deliverTo)." from={$fromAddress}: {$error}");
-                return false;
+                // Fall through to Laravel mailer (log / SMTP) when Resend is unavailable.
             }
         }
 

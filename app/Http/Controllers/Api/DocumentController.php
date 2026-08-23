@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\Driver;
 use App\Models\DriverDocument;
 use App\Models\JobApplication;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
 {
+    use ResolvesTransportFleet;
+
     public function __construct(private EmploymentService $employment)
     {
     }
@@ -82,7 +85,7 @@ class DocumentController extends Controller
     /** Stream document file for owner viewing fleet-driver or applicant documents (auth required) */
     public function ownerFile(Request $request, $id)
     {
-        $owner = $request->user()->transportOwner ?? null;
+        $owner = $this->transportFleet($request);
         if (!$owner) {
             abort(404);
         }
