@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Trip extends Model
 {
+    use BelongsToBusiness;
+
     protected $fillable = [
-        'route_id', 'vehicle_id', 'driver_id', 'departure_time', 'arrival_time',
+        'business_id', 'route_id', 'vehicle_id', 'driver_id', 'departure_time', 'arrival_time',
         'price', 'available_seats', 'status'
     ];
 

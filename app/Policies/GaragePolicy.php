@@ -27,8 +27,18 @@ class GaragePolicy
 
     public function create(User $user): bool
     {
-        return $user->hasCapability('admin')
-            || ($user->hasPermission('garage.create') && $user->hasCapability('garage_owner'));
+        if ($user->hasCapability('admin')) {
+            return true;
+        }
+
+        if ($user->hasPermission('garage.create') && $user->hasCapability('garage_owner')) {
+            return true;
+        }
+
+        return $user->activeBusinessMemberships()
+            ->whereHas('role', fn ($q) => $q->where('code', 'owner'))
+            ->whereHas('business.type', fn ($q) => $q->whereIn('code', ['garage', 'car_wash']))
+            ->exists();
     }
 
     public function update(User $user, Garage $garage): bool

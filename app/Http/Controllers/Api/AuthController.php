@@ -10,6 +10,7 @@ use App\Models\Driver;
 use App\Models\Technician;
 use App\Models\TransportOwner;
 use App\Models\User;
+use App\Services\BusinessOperationService;
 use App\Services\EmploymentService;
 use App\Support\AuthUserPresenter;
 use App\Support\MailRecipient;
@@ -75,8 +76,7 @@ class AuthController extends Controller
     /** @return list<string> */
     private function selfEnrollableRoles(User $user): array
     {
-        // Managers are granted by business owners (same as technician hire) — not self-enrolled.
-        return ['customer', 'owner', 'garage_owner', 'technician'];
+        return \App\Support\ChapaCapabilities::selfEnrollableRoles();
     }
 
     /** Return all common formats for a Tanzanian phone (handles legacy DB formats). */
@@ -630,6 +630,9 @@ class AuthController extends Controller
                     'status'         => 'pending',
                 ]);
             }
+            if ($user->transportOwner) {
+                app(BusinessOperationService::class)->ensureBusinessForFleet($user->transportOwner);
+            }
         }
 
         if ($validated['role'] === 'garage_owner') {
@@ -642,6 +645,10 @@ class AuthController extends Controller
                     'location' => $request->input('location'),
                     'status'   => 'active',
                 ]);
+            }
+            $garage = $user->garages()->first();
+            if ($garage) {
+                app(BusinessOperationService::class)->ensureBusinessForGarage($garage);
             }
         }
 
@@ -672,6 +679,15 @@ class AuthController extends Controller
         ]);
 
         $role = Role::firstOrCreate(['name' => $validated['role']]);
+
+        if (\App\Support\ChapaCapabilities::isBusinessMapped($validated['role'])
+            && ! \App\Support\ChapaCapabilities::legacyPivotWritesEnabled()) {
+            return response()->json([
+                'message' => 'Register or join a CHAPA business instead of enrolling this role directly.',
+                'code' => 'USE_BUSINESS_MEMBERSHIP',
+                'next_step' => 'register_business',
+            ], 422);
+        }
 
         $user->enrollCapability($role);
         $this->ensurePivotRoles($user);

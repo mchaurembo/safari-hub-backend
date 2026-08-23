@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Garage;
 use App\Models\GarageBooking;
 use App\Models\GarageService;
+use App\Services\BusinessOperationService;
 use App\Services\GarageWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ class CustomerGarageController extends Controller
 {
     public function __construct(
         private readonly GarageWorkflowService $workflow,
+        private readonly BusinessOperationService $businessOps,
     ) {}
 
     /** Browse active garages (with service counts). */
@@ -115,6 +117,7 @@ class CustomerGarageController extends Controller
 
         try {
             $booking = GarageBooking::create([
+                'business_id' => $this->businessOps->businessIdForNewGarageBooking($garage->id),
                 'customer_id' => $user->id,
                 'garage_id' => $garage->id,
                 'service_id' => $service->id,

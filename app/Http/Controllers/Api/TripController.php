@@ -15,9 +15,12 @@ class TripController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Trip::with(['route', 'vehicle', 'driver.user'])
+        $query = Trip::with(['route', 'vehicle.owner', 'driver.user', 'business:id,trade_name,legal_name,logo_url'])
             ->where('status', 'scheduled');
 
+        if ($request->filled('business_id')) {
+            $query->forBusiness((int) $request->business_id);
+        }
         if ($request->route_id) {
             $query->where('route_id', $request->route_id);
         }
@@ -32,7 +35,7 @@ class TripController extends Controller
 
     public function show(Trip $trip): JsonResponse
     {
-        $trip->load(['route', 'vehicle', 'driver.user', 'tripStops']);
+        $trip->load(['route', 'vehicle.owner', 'driver.user', 'tripStops', 'business:id,trade_name,legal_name,logo_url']);
 
         return response()->json(['data' => $trip]);
     }
@@ -61,6 +64,7 @@ class TripController extends Controller
 
         $trip = Trip::create([
             ...$validated,
+            'business_id' => $vehicle->business_id ?? $owner->business_id,
             'available_seats' => $vehicle->total_seats,
             'status' => 'scheduled',
         ]);

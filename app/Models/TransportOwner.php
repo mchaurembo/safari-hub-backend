@@ -2,16 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TransportOwner extends Model
 {
+    use BelongsToBusiness;
+
     protected $table = 'transport_owners';
 
     protected $fillable = [
-        'user_id', 'company_name', 'license_number', 'address', 'status'
+        'business_id', 'user_id', 'company_name', 'license_number', 'address', 'status'
     ];
 
     public function user(): BelongsTo

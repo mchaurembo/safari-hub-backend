@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,8 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Driver extends Model
 {
+    use BelongsToBusiness;
+
     protected $fillable = [
-        'user_id', 'owner_id', 'license_number', 'experience_years', 'status'
+        'business_id', 'user_id', 'owner_id', 'license_number', 'experience_years', 'status'
     ];
 
     public function user(): BelongsTo

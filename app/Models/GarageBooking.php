@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class GarageBooking extends Model
 {
+    use BelongsToBusiness;
+
     public const STATUSES = [
         'pending',
         'confirmed',
@@ -20,6 +23,7 @@ class GarageBooking extends Model
     ];
 
     protected $fillable = [
+        'business_id',
         'customer_id',
         'garage_id',
         'service_id',

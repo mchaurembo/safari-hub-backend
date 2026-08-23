@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class WorkOrder extends Model
 {
+    use BelongsToBusiness;
+
     public const STATUSES = [
         'open',
         'assigned',
@@ -22,6 +25,7 @@ class WorkOrder extends Model
     ];
 
     protected $fillable = [
+        'business_id',
         'garage_booking_id',
         'garage_id',
         'customer_id',

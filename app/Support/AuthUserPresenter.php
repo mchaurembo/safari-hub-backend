@@ -3,6 +3,9 @@
 namespace App\Support;
 
 use App\Models\User;
+use App\Services\BusinessAuthorizationService;
+use App\Services\BusinessCapabilityBridgeService;
+use App\Services\LegacyBusinessAccessService;
 
 class AuthUserPresenter
 {
@@ -13,16 +16,42 @@ class AuthUserPresenter
     public static function present(User $user): array
     {
         $user->refreshLegacyPrimaryRole();
-        $user->loadMissing(['role', 'roles', 'transportOwner', 'driver', 'garages', 'technicians', 'garageMemberships', 'employmentRelationships']);
+        $user->loadMissing([
+            'role',
+            'roles',
+            'transportOwner',
+            'driver',
+            'garages',
+            'technicians',
+            'garageMemberships',
+            'employmentRelationships',
+            'activeBusinessMemberships.business.type',
+            'activeBusinessMemberships.business.category',
+            'activeBusinessMemberships.role',
+            'activeBusinessMemberships.position',
+        ]);
 
         $capabilities = $user->capabilitySummaries();
+        $bridge = app(BusinessCapabilityBridgeService::class);
+        foreach ($bridge->derivedCapabilityCodes($user) as $code) {
+            if (! collect($capabilities)->contains(fn ($c) => ($c['code'] ?? null) === $code)) {
+                $capabilities[] = [
+                    'code' => $code,
+                    'status' => 'active',
+                    'source' => 'business_membership',
+                ];
+            }
+        }
+
         $permissions = $user->permissionCodes();
-        $workspaces = self::workspaces($user, $capabilities);
+        $workspaces = self::workspaces($user, $capabilities, $bridge);
+        $businessMemberships = self::businessMemberships($user);
 
         $payload = $user->toArray();
         $payload['capabilities'] = $capabilities;
         $payload['permissions'] = $permissions;
         $payload['workspaces'] = $workspaces;
+        $payload['business_memberships'] = $businessMemberships;
 
         $managedFleet = $user->managedTransportFleet();
         if ($managedFleet) {
@@ -44,7 +73,7 @@ class AuthUserPresenter
      * @param  list<array{code: string, status: string}>  $capabilities
      * @return list<array{id: string, available: bool, reason?: string, resources?: array}>
      */
-    private static function workspaces(User $user, array $capabilities): array
+    private static function workspaces(User $user, array $capabilities, BusinessCapabilityBridgeService $bridge): array
     {
         $active = collect($capabilities)
             ->filter(fn ($c) => ($c['status'] ?? null) === 'active')
@@ -125,6 +154,8 @@ class AuthUserPresenter
             ],
         ];
 
+        $list = self::mergeWorkspaces($list, $bridge->businessWorkspaces($user));
+
         return array_map(function (array $ws) {
             if (! array_key_exists('reason', $ws) || $ws['reason'] === null) {
                 unset($ws['reason']);
@@ -135,5 +166,66 @@ class AuthUserPresenter
 
             return $ws;
         }, $list);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $base
+     * @param  list<array<string, mixed>>  $overrides
+     * @return list<array<string, mixed>>
+     */
+    private static function mergeWorkspaces(array $base, array $overrides): array
+    {
+        $indexed = collect($base)->keyBy('id');
+
+        foreach ($overrides as $override) {
+            $id = $override['id'] ?? null;
+            if (! $id) {
+                continue;
+            }
+
+            $existing = $indexed->get($id);
+            if (! $existing) {
+                $indexed->put($id, $override);
+                continue;
+            }
+
+            if (($override['available'] ?? false) && ! ($existing['available'] ?? false)) {
+                $indexed->put($id, array_merge($existing, $override));
+            }
+        }
+
+        return $indexed->values()->all();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function businessMemberships(User $user): array
+    {
+        $authorization = app(BusinessAuthorizationService::class);
+
+        return $user->activeBusinessMemberships
+            ->map(function ($membership) use ($authorization) {
+                return [
+                    'id' => $membership->id,
+                    'uuid' => $membership->uuid,
+                    'role' => $membership->role?->code,
+                    'role_name' => $membership->role?->name,
+                    'position' => $membership->position?->code,
+                    'position_name' => $membership->position?->name,
+                    'permissions' => $authorization->effectivePermissions($membership),
+                    'legacy_capabilities' => app(LegacyBusinessAccessService::class)
+                        ->legacyCapabilityCodesForMembership($membership->user_id, $membership->business_id),
+                    'business' => [
+                        'id' => $membership->business?->id,
+                        'uuid' => $membership->business?->uuid,
+                        'name' => $membership->business?->displayName(),
+                        'type' => $membership->business?->type?->code,
+                        'category' => $membership->business?->category?->code,
+                        'legacy_transport_owner_id' => $membership->business?->legacy_transport_owner_id,
+                        'legacy_garage_id' => $membership->business?->legacy_garage_id,
+                    ],
+                ];
+            })
+            ->values()
+            ->all();
     }
 }

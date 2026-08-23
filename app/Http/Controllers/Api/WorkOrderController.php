@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesBusinessContext;
 use App\Models\Garage;
 use App\Models\ServiceHistory;
 use App\Models\Technician;
@@ -13,6 +14,8 @@ use Illuminate\Http\Request;
 
 class WorkOrderController extends Controller
 {
+    use ResolvesBusinessContext;
+
     public function __construct(private GarageWorkflowService $workflow) {}
 
     public function index(Request $request): JsonResponse
@@ -29,6 +32,10 @@ class WorkOrderController extends Controller
             'technician.user:id,name',
             'customer:id,name',
         ])->where('garage_id', $garage->id);
+
+        if ($businessId = $this->activeBusinessId($request)) {
+            $query->where('business_id', $businessId);
+        }
 
         if ($user->isGarageTechnician($garage) && ! $user->ownsGarage($garage)) {
             $tech = Technician::where('user_id', $user->id)->where('garage_id', $garage->id)->first();

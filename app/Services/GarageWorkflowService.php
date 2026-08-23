@@ -33,6 +33,7 @@ class GarageWorkflowService
         $wo = WorkOrder::firstOrCreate(
             ['garage_booking_id' => $booking->id],
             [
+                'business_id' => $booking->business_id,
                 'garage_id' => $booking->garage_id,
                 'customer_id' => $booking->customer_id,
                 'technician_id' => $booking->technician_id,

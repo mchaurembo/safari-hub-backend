@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\ForceHttps::class,
         ]);
+        $middleware->alias([
+            'business.context' => \App\Http\Middleware\EnsureBusinessContext::class,
+            'business.permission' => \App\Http\Middleware\RequireBusinessPermission::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

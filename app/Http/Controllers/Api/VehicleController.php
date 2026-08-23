@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\Driver;
 use App\Models\Vehicle;
 use App\Services\AuditLogger;
+use App\Services\BusinessOperationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,7 +15,10 @@ class VehicleController extends Controller
 {
     use ResolvesTransportFleet;
 
-    public function __construct(private AuditLogger $audit) {}
+    public function __construct(
+        private AuditLogger $audit,
+        private BusinessOperationService $businessOps,
+    ) {}
 
     public function store(Request $request): JsonResponse
     {
@@ -35,6 +39,7 @@ class VehicleController extends Controller
         $vehicle = Vehicle::create([
             ...$validated,
             'owner_id' => $owner->id,
+            'business_id' => $this->businessOps->businessIdForNewVehicle($owner->id),
             'status' => 'active',
         ]);
 

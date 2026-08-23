@@ -12,8 +12,10 @@ use App\Models\GarageService;
 use App\Models\Role;
 use App\Models\Technician;
 use App\Models\User;
+use App\Services\BusinessOperationService;
 use App\Services\EmploymentService;
 use App\Services\GarageWorkflowService;
+use App\Services\LegacyBusinessAccessService;
 use App\Services\NotificationService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +32,8 @@ class GarageController extends Controller
         private NotificationService $notify,
         private EmploymentService $employment,
         private GarageWorkflowService $workflow,
+        private BusinessOperationService $businessOps,
+        private LegacyBusinessAccessService $legacyAccess,
     ) {}
 
     public function ping(): JsonResponse
@@ -67,7 +71,6 @@ class GarageController extends Controller
     public function createGarage(Request $request): JsonResponse
     {
         $user = $request->user();
-        $user->enrollCapability('garage_owner');
         $this->authorize('create', Garage::class);
 
         $validated = $request->validate([
@@ -83,6 +86,7 @@ class GarageController extends Controller
         ]);
 
         $this->employment->ensureGarageOwnerMembership($garage);
+        $this->businessOps->ensureBusinessForGarage($garage);
 
         return response()->json([
             'garage' => $garage,
@@ -122,7 +126,7 @@ class GarageController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $user = $request->user();
-        $garage = $this->resolveGarage($user);
+        $garage = $this->resolveGarage($request);
         if (! $garage) {
             $message = 'No garage profile found. Create your garage to continue.';
             if ($user->hasCapability('garage_manager') && ! $user->hasCapability('garage_owner')) {
@@ -180,7 +184,7 @@ class GarageController extends Controller
 
     public function showGarage(Request $request): JsonResponse
     {
-        $garage = $this->resolveGarage($request->user());
+        $garage = $this->resolveGarage($request);
         if (! $garage) {
             return response()->json(['message' => 'No garage profile found.'], 404);
         }
@@ -192,7 +196,7 @@ class GarageController extends Controller
 
     public function updateGarage(Request $request): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         $this->authorize('update', $garage);
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -206,7 +210,7 @@ class GarageController extends Controller
 
     public function services(Request $request): JsonResponse
     {
-        $garage = $this->resolveGarage($request->user());
+        $garage = $this->resolveGarage($request);
         if (! $garage) {
             return response()->json(['message' => 'No garage profile found.'], 404);
         }
@@ -221,7 +225,7 @@ class GarageController extends Controller
 
     public function storeService(Request $request): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         $this->authorize('manageServices', $garage);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -234,6 +238,7 @@ class GarageController extends Controller
 
         $service = $garage->services()->create([
             ...$validated,
+            'business_id' => $this->businessOps->businessIdForGarage($garage->id),
             'status' => $validated['status'] ?? 'active',
         ]);
 
@@ -242,7 +247,7 @@ class GarageController extends Controller
 
     public function updateService(Request $request, GarageService $service): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         if ($service->garage_id !== $garage->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -262,7 +267,7 @@ class GarageController extends Controller
 
     public function destroyService(Request $request, GarageService $service): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         if ($service->garage_id !== $garage->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -278,7 +283,7 @@ class GarageController extends Controller
 
     public function technicians(Request $request): JsonResponse
     {
-        $garage = $this->resolveGarage($request->user());
+        $garage = $this->resolveGarage($request);
         if (! $garage) {
             return response()->json(['message' => 'No garage profile found.'], 404);
         }
@@ -296,7 +301,7 @@ class GarageController extends Controller
 
     public function storeTechnician(Request $request): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
@@ -342,7 +347,7 @@ class GarageController extends Controller
 
     public function updateTechnician(Request $request, Technician $technician): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         if ($technician->garage_id !== $garage->id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -392,7 +397,7 @@ class GarageController extends Controller
     /** Customers derived from this garage's bookings (no separate CRM list). */
     public function customers(Request $request): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
 
         $query = User::query()
             ->whereIn('id', GarageBooking::query()
@@ -450,7 +455,7 @@ class GarageController extends Controller
     /** Update contact details for a customer who has booked at this garage. */
     public function updateCustomer(Request $request, User $customer): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
 
         $belongs = GarageBooking::where('garage_id', $garage->id)
             ->where('customer_id', $customer->id)
@@ -488,7 +493,7 @@ class GarageController extends Controller
 
     public function bookings(Request $request): JsonResponse
     {
-        $garage = $this->resolveGarage($request->user());
+        $garage = $this->resolveGarage($request);
         if (! $garage) {
             return response()->json(['message' => 'No garage profile found.'], 404);
         }
@@ -524,7 +529,7 @@ class GarageController extends Controller
 
     public function storeBooking(Request $request): JsonResponse
     {
-        $garage = $this->requireOwnerGarage($request->user());
+        $garage = $this->requireOwnerGarage($request);
         $validated = $request->validate([
             'customer_name' => 'required_without:customer_id|string|max:255',
             'customer_email' => 'required_without:customer_id|email|max:255',
@@ -576,7 +581,9 @@ class GarageController extends Controller
         }
 
         try {
+            $businessId = $this->businessOps->businessIdForNewGarageBooking($garage->id);
             $booking = GarageBooking::create([
+                'business_id' => $businessId,
                 'customer_id' => $customerId,
                 'garage_id' => $garage->id,
                 'service_id' => $service->id,
@@ -811,46 +818,14 @@ class GarageController extends Controller
         }
     }
 
-    private function resolveGarage(User $user): ?Garage
+    private function resolveGarage(Request $request): ?Garage
     {
-        $garage = Garage::where('owner_id', $user->id)->first();
-        if ($garage) {
-            return $garage;
-        }
-
-        $membership = $user->garageMemberships()
-            ->where('status', 'active')
-            ->whereNull('left_at')
-            ->with('garage')
-            ->latest('id')
-            ->first();
-        if ($membership?->garage) {
-            return $membership->garage;
-        }
-
-        $tech = Technician::where('user_id', $user->id)->first();
-
-        return $tech?->garage;
+        return $this->legacyAccess->garageForRequest($request->user(), $request);
     }
 
-    private function requireOwnerGarage(User $user): Garage
+    private function requireOwnerGarage(Request $request): Garage
     {
-        $garage = Garage::where('owner_id', $user->id)->first();
-        if ($garage) {
-            return $garage;
-        }
-
-        $managed = $user->garageMemberships()
-            ->whereIn('membership_type', ['owner', 'manager'])
-            ->where('status', 'active')
-            ->whereNull('left_at')
-            ->with('garage')
-            ->latest('id')
-            ->first();
-
-        abort_unless($managed?->garage, 403, 'Garage owner access required.');
-
-        return $managed->garage;
+        return $this->legacyAccess->requireOwnerGarage($request->user(), $request);
     }
 
     private function isTechnicianOnly(User $user): bool

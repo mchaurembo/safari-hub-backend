@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\CargoController;
 use App\Http\Controllers\Api\CustomerGarageController;
+use App\Http\Controllers\Api\CustomerTransportController;
 use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\DriverController;
 use App\Http\Controllers\Api\GarageController;
@@ -173,6 +174,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/{payment}/retry', [PaymentController::class, 'retry']);
     Route::get('/payments/{payment}/receipt', [PaymentController::class, 'receipt']);
 
+    // Customer transport marketplace (same CHAPA customer account)
+    Route::get('/customer/transport-providers', [CustomerTransportController::class, 'index']);
+
     // Customer garage marketplace (same CHAPA customer account)
     Route::get('/customer/garages', [CustomerGarageController::class, 'index']);
     Route::get('/customer/garages/{garage}', [CustomerGarageController::class, 'show']);
@@ -226,4 +230,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/garage/work-orders/{workOrder}/complete', [WorkOrderController::class, 'complete']);
     Route::post('/garage/work-orders/{workOrder}/items', [WorkOrderController::class, 'addItem']);
     Route::get('/service-history', [WorkOrderController::class, 'serviceHistory']);
+});
+
+// CHAPA Group multi-business platform (Phase 1 — additive, parallel to legacy routes)
+Route::prefix('v1')->group(function () {
+    require __DIR__.'/api_v1.php';
 });

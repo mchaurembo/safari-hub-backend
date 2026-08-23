@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\ResolvesBusinessContext;
 use App\Http\Controllers\Concerns\ResolvesTransportFleet;
 use App\Models\Booking;
 use App\Models\CargoRequest;
@@ -15,6 +16,7 @@ use App\Models\Trip;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\AuthUserPresenter;
+use App\Services\BusinessOperationService;
 use App\Services\EmploymentService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -23,8 +25,12 @@ use Illuminate\Http\Request;
 class OwnerController extends Controller
 {
     use ResolvesTransportFleet;
+    use ResolvesBusinessContext;
 
-    public function __construct(private EmploymentService $employment) {}
+    public function __construct(
+        private EmploymentService $employment,
+        private BusinessOperationService $businessOps,
+    ) {}
 
     /**
      * Search users the owner can hire: job seekers (applied / seeker profile)
@@ -99,8 +105,6 @@ class OwnerController extends Controller
             return response()->json(['message' => 'Transport managers cannot create fleet profiles.'], 403);
         }
 
-        $user->enrollCapability('owner');
-
         $validated = $request->validate([
             'company_name' => 'required|string|max:255',
             'license_number' => 'required|string|max:100',
@@ -111,6 +115,8 @@ class OwnerController extends Controller
             ['user_id' => $user->id],
             array_merge($validated, ['status' => 'pending'])
         );
+
+        $this->businessOps->ensureBusinessForFleet($owner);
 
         return response()->json([
             'data' => $owner,
@@ -126,7 +132,11 @@ class OwnerController extends Controller
             return response()->json(['message' => 'No fleet access'], 403);
         }
 
-        $vehicles = Vehicle::with('drivers.user')->where('owner_id', $owner->id)->orderByDesc('created_at')->get();
+        $query = Vehicle::with('drivers.user')->where('owner_id', $owner->id);
+        if ($businessId = $this->activeBusinessId($request)) {
+            $query->where('business_id', $businessId);
+        }
+        $vehicles = $query->orderByDesc('created_at')->get();
 
         return response()->json(['data' => $vehicles]);
     }
@@ -138,11 +148,13 @@ class OwnerController extends Controller
             return response()->json(['message' => 'No fleet access'], 403);
         }
 
-        $drivers = Driver::with('user')
+        $query = Driver::with('user')
             ->withCount('documents')
-            ->where('owner_id', $owner->id)
-            ->orderByDesc('created_at')
-            ->get();
+            ->where('owner_id', $owner->id);
+        if ($businessId = $this->activeBusinessId($request)) {
+            $query->where('business_id', $businessId);
+        }
+        $drivers = $query->orderByDesc('created_at')->get();
 
         return response()->json(['data' => $drivers]);
     }

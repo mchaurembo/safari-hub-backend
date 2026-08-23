@@ -129,12 +129,33 @@ class User extends Authenticatable
         return $this->hasMany(EmploymentRelationship::class, 'employee_user_id');
     }
 
+    public function businessMemberships(): HasMany
+    {
+        return $this->hasMany(BusinessMembership::class);
+    }
+
+    public function activeBusinessMemberships(): HasMany
+    {
+        return $this->businessMemberships()->where('status', BusinessMembership::STATUS_ACTIVE);
+    }
+
+    public function customerProfile(): HasOne
+    {
+        return $this->hasOne(CustomerProfile::class);
+    }
+
     /**
      * Attach or re-activate a capability without removing others.
      * Reactivation only flips pivot status — it does not recreate or wipe history.
      */
     public function enrollCapability(Role|string $role, string $status = self::CAPABILITY_ACTIVE): void
     {
+        $code = $role instanceof Role ? $role->name : $role;
+        if (! \App\Support\ChapaCapabilities::legacyPivotWritesEnabled()
+            && \App\Support\ChapaCapabilities::isBusinessMapped($code)) {
+            return;
+        }
+
         $roleModel = $role instanceof Role
             ? $role
             : Role::firstOrCreate(['name' => $role]);
@@ -164,6 +185,13 @@ class User extends Authenticatable
      */
     public function unenrollCapability(Role|string $role): void
     {
+        $code = $role instanceof Role ? $role->name : (string) $role;
+        if (! \App\Support\ChapaCapabilities::legacyPivotWritesEnabled()
+            && \App\Support\ChapaCapabilities::isBusinessMapped($code)
+            && app(\App\Services\BusinessCapabilityBridgeService::class)->hasDerivedCapability($this, $code)) {
+            return;
+        }
+
         $roleModel = $role instanceof Role
             ? $role
             : Role::where('name', $role)->first();
@@ -224,7 +252,7 @@ class User extends Authenticatable
     {
         $this->loadMissing('roles');
 
-        return $this->roles->contains(function (Role $role) use ($code, $status) {
+        $fromRoles = $this->roles->contains(function (Role $role) use ($code, $status) {
             if ($role->name !== $code) {
                 return false;
             }
@@ -232,6 +260,16 @@ class User extends Authenticatable
 
             return $pivotStatus === $status;
         });
+
+        if ($fromRoles) {
+            return true;
+        }
+
+        if ($status !== self::CAPABILITY_ACTIVE) {
+            return false;
+        }
+
+        return app(\App\Services\BusinessCapabilityBridgeService::class)->hasDerivedCapability($this, $code);
     }
 
     /** @param  list<string>  $codes */
@@ -256,12 +294,13 @@ class User extends Authenticatable
     {
         $this->loadMissing('roles');
 
-        return $this->roles
+        $fromRoles = $this->roles
             ->filter(fn (Role $role) => ($role->pivot->status ?? self::CAPABILITY_ACTIVE) === self::CAPABILITY_ACTIVE)
-            ->pluck('name')
-            ->unique()
-            ->values()
-            ->all();
+            ->pluck('name');
+
+        $derived = app(\App\Services\BusinessCapabilityBridgeService::class)->derivedCapabilityCodes($this);
+
+        return $fromRoles->merge($derived)->unique()->values()->all();
     }
 
     /**
@@ -271,11 +310,32 @@ class User extends Authenticatable
     {
         $this->loadMissing('roles');
 
-        return $this->roles->map(fn (Role $role) => [
+        $fromPivot = $this->roles->map(fn (Role $role) => [
             'code' => $role->name,
             'status' => $role->pivot->status ?? self::CAPABILITY_ACTIVE,
             'verification_status' => $role->pivot->verification_status ?? null,
+            'source' => 'user_roles',
         ])->values()->all();
+
+        if (\App\Support\ChapaCapabilities::legacyPivotWritesEnabled()) {
+            return $fromPivot;
+        }
+
+        $platform = collect($fromPivot)
+            ->filter(fn (array $c) => \App\Support\ChapaCapabilities::isPlatform($c['code']))
+            ->values()
+            ->all();
+
+        $derived = collect(app(\App\Services\BusinessCapabilityBridgeService::class)->derivedCapabilityCodes($this))
+            ->map(fn (string $code) => [
+                'code' => $code,
+                'status' => self::CAPABILITY_ACTIVE,
+                'source' => 'business_membership',
+            ])
+            ->values()
+            ->all();
+
+        return array_merge($platform, $derived);
     }
 
     /** @return list<string> */
@@ -283,12 +343,13 @@ class User extends Authenticatable
     {
         $this->loadMissing('roles.permissions');
 
-        return $this->roles
+        $fromRoles = $this->roles
             ->filter(fn (Role $role) => ($role->pivot->status ?? self::CAPABILITY_ACTIVE) === self::CAPABILITY_ACTIVE)
-            ->flatMap(fn (Role $role) => $role->permissions->pluck('code'))
-            ->unique()
-            ->values()
-            ->all();
+            ->flatMap(fn (Role $role) => $role->permissions->pluck('code'));
+
+        $derived = app(\App\Services\BusinessCapabilityBridgeService::class)->derivedPermissionCodes($this);
+
+        return $fromRoles->merge($derived)->unique()->values()->all();
     }
 
     public function managedTransportFleet(): ?TransportOwner

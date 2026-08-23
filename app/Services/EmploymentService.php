@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Business;
 use App\Models\CargoRequest;
 use App\Models\Driver;
 use App\Models\EmploymentRelationship;
 use App\Models\Garage;
 use App\Models\GarageMember;
+use App\Models\MembershipRole;
 use App\Models\Role;
 use App\Models\Technician;
 use App\Models\TransportOwner;
@@ -18,7 +20,11 @@ use InvalidArgumentException;
 
 class EmploymentService
 {
-    public function __construct(private AuditLogger $audit) {}
+    public function __construct(
+        private AuditLogger $audit,
+        private BusinessOperationService $businessOps,
+        private BusinessService $businessService,
+    ) {}
 
     public function ensureGarageMembership(
         Garage $garage,
@@ -62,10 +68,6 @@ class EmploymentService
         User $user,
         array $attrs = []
     ): Driver {
-        if (! $user->hasCapability('driver')) {
-            $user->enrollCapability('driver');
-        }
-
         return DB::transaction(function () use ($fleet, $user, $attrs) {
             $existing = Driver::where('user_id', $user->id)->first();
 
@@ -81,10 +83,19 @@ class EmploymentService
                 $this->endTransportEmployment($existing->owner_id, $user->id);
             }
 
+            $businessId = $fleet->business_id ?? $this->businessOps->ensureBusinessForFleet($fleet);
+            if ($businessId) {
+                $business = Business::find($businessId);
+                if ($business) {
+                    $this->businessService->ensureStaffMembership($business, $user, 'driver');
+                }
+            }
+
             $driver = Driver::updateOrCreate(
                 ['user_id' => $user->id],
                 [
                     'owner_id' => $fleet->id,
+                    'business_id' => $businessId,
                     'license_number' => $attrs['license_number'] ?? $existing?->license_number ?? 'TEMP-DL',
                     'experience_years' => $attrs['experience_years'] ?? $existing?->experience_years ?? 0,
                     'status' => 'active',
@@ -122,10 +133,18 @@ class EmploymentService
             $driver->update([
                 'status' => 'inactive',
                 'owner_id' => null,
+                'business_id' => null,
             ]);
 
             if ($fleetId && $user) {
                 $this->endTransportEmployment((int) $fleetId, $user->id);
+            }
+
+            if ($driver->business_id && $user) {
+                $business = Business::find($driver->business_id);
+                if ($business) {
+                    $this->businessService->terminateMembership($business, $user);
+                }
             }
 
             if (! $user) {
@@ -236,19 +255,30 @@ class EmploymentService
 
     public function employTechnician(Garage $garage, User $user, ?string $specialization = null): Technician
     {
-        $user->enrollCapability('technician');
-
         return DB::transaction(function () use ($garage, $user, $specialization) {
+            $businessId = $garage->business_id ?? $this->businessOps->ensureBusinessForGarage($garage);
+            if ($businessId) {
+                $business = Business::find($businessId);
+                if ($business) {
+                    $this->businessService->ensureStaffMembership($business, $user, 'technician');
+                }
+            }
+
             $tech = Technician::firstOrCreate(
                 ['user_id' => $user->id, 'garage_id' => $garage->id],
                 [
+                    'business_id' => $businessId,
                     'specialization' => $specialization ?? 'General',
                     'status' => 'active',
                 ]
             );
 
-            if ($specialization) {
-                $tech->update(['specialization' => $specialization, 'status' => 'active']);
+            if ($specialization || ! $tech->business_id) {
+                $tech->update([
+                    'specialization' => $specialization ?? $tech->specialization,
+                    'status' => 'active',
+                    'business_id' => $businessId,
+                ]);
             }
 
             $this->ensureGarageMembership($garage, $user, GarageMember::TYPE_TECHNICIAN);
@@ -272,7 +302,14 @@ class EmploymentService
     public function ensureGarageOwnerMembership(Garage $garage): GarageMember
     {
         $owner = User::findOrFail($garage->owner_id);
-        $owner->enrollCapability('garage_owner');
+        $businessId = $garage->business_id ?? $this->businessOps->ensureBusinessForGarage($garage);
+        if ($businessId) {
+            $business = Business::find($businessId);
+            if ($business) {
+                $ownerRole = MembershipRole::where('code', MembershipRole::CODE_OWNER)->firstOrFail();
+                $this->businessService->addMember($business, $owner, $ownerRole);
+            }
+        }
 
         return $this->ensureGarageMembership($garage, $owner, GarageMember::TYPE_OWNER);
     }
@@ -308,11 +345,16 @@ class EmploymentService
 
     public function employTransportManager(TransportOwner $fleet, User $user): EmploymentRelationship
     {
-        if (! $user->hasCapability('transport_manager')) {
-            $user->enrollCapability('transport_manager');
-        }
-
         return DB::transaction(function () use ($fleet, $user) {
+            $businessId = $fleet->business_id ?? $this->businessOps->ensureBusinessForFleet($fleet);
+            if ($businessId) {
+                $business = Business::find($businessId);
+                if ($business) {
+                    $managerRole = MembershipRole::where('code', MembershipRole::CODE_MANAGER)->firstOrFail();
+                    $this->businessService->addMember($business, $user, $managerRole);
+                }
+            }
+
             $rel = $this->upsertEmployment(
                 EmploymentRelationship::EMPLOYER_TRANSPORT,
                 $fleet->id,
@@ -369,11 +411,16 @@ class EmploymentService
      */
     public function employGarageManager(Garage $garage, User $user): GarageMember
     {
-        if (! $user->hasCapability('garage_manager')) {
-            $user->enrollCapability('garage_manager');
-        }
-
         return DB::transaction(function () use ($garage, $user) {
+            $businessId = $garage->business_id ?? $this->businessOps->ensureBusinessForGarage($garage);
+            if ($businessId) {
+                $business = Business::find($businessId);
+                if ($business) {
+                    $managerRole = MembershipRole::where('code', MembershipRole::CODE_MANAGER)->firstOrFail();
+                    $this->businessService->addMember($business, $user, $managerRole);
+                }
+            }
+
             $member = $this->ensureGarageMembership($garage, $user, GarageMember::TYPE_MANAGER);
             $this->upsertEmployment(
                 EmploymentRelationship::EMPLOYER_GARAGE,

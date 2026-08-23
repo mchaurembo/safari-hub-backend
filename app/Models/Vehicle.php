@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -9,8 +10,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Vehicle extends Model
 {
+    use BelongsToBusiness;
+
     protected $fillable = [
-        'owner_id', 'vehicle_number', 'vehicle_type', 'total_seats', 'model', 'status', 'transport_type'
+        'business_id', 'owner_id', 'vehicle_number', 'vehicle_type', 'total_seats', 'model', 'status', 'transport_type'
     ];
 
     public function owner(): BelongsTo
