@@ -15,23 +15,47 @@ class BusinessAuthorizationService
     {
         $membership->loadMissing(['role.permissions', 'position.permissions', 'business.capabilityAssignments.capability']);
 
-        $enabledCapabilities = $membership->business->capabilityAssignments
-            ->where('enabled', true)
-            ->pluck('capability.code')
-            ->filter()
-            ->values()
-            ->all();
+        $enabledCapabilities = $membership->business?->capabilityAssignments
+            ? $membership->business->capabilityAssignments
+                ->where('enabled', true)
+                ->map(fn ($a) => $a->capability?->code)
+                ->filter()
+                ->values()
+                ->all()
+            : [];
 
         // Owners always get full non-admin access for enabled business capabilities,
         // even if membership_role_permissions was never seeded on this environment.
         if ($membership->isOwner()) {
             $codes = Permission::query()
+                ->whereNotNull('code')
+                ->where('code', '!=', '')
                 ->where('code', 'not like', 'admin.%')
-                ->pluck('code');
+                ->pluck('code')
+                ->filter(fn ($code) => is_string($code) && $code !== '')
+                ->values();
+
+            // Guaranteed core access even if permissions table is incomplete.
+            $codes = $codes->merge([
+                'business.view',
+                'business.update',
+                'business.members.view',
+                'business.members.create',
+                'business.members.update',
+                'branch.view',
+                'product.view',
+                'product.create',
+                'product.update',
+                'order.view',
+                'order.create',
+                'inventory.view',
+                'payment.view',
+                'customer.view',
+                'report.view',
+            ])->unique()->values();
 
             return $codes
-                ->unique()
-                ->filter(fn (string $code) => $this->permissionAllowedByCapabilities($code, $enabledCapabilities))
+                ->filter(fn ($code) => is_string($code) && $this->permissionAllowedByCapabilities($code, $enabledCapabilities))
                 ->values()
                 ->all();
         }
@@ -43,8 +67,9 @@ class BusinessAuthorizationService
         }
 
         return $codes
+            ->filter(fn ($code) => is_string($code) && $code !== '')
             ->unique()
-            ->filter(fn (string $code) => $this->permissionAllowedByCapabilities($code, $enabledCapabilities))
+            ->filter(fn ($code) => $this->permissionAllowedByCapabilities($code, $enabledCapabilities))
             ->values()
             ->all();
     }
