@@ -29,6 +29,10 @@ class AuthUserPresenter
             'activeBusinessMemberships.business.category',
             'activeBusinessMemberships.role',
             'activeBusinessMemberships.position',
+            'visibleBusinessMemberships.business.type',
+            'visibleBusinessMemberships.business.category',
+            'visibleBusinessMemberships.role',
+            'visibleBusinessMemberships.position',
         ]);
 
         $capabilities = $user->capabilitySummaries();
@@ -202,29 +206,36 @@ class AuthUserPresenter
     {
         $authorization = app(BusinessAuthorizationService::class);
 
-        return $user->activeBusinessMemberships
+        return $user->visibleBusinessMemberships
             ->map(function ($membership) use ($authorization) {
+                $isActive = $membership->status === \App\Models\BusinessMembership::STATUS_ACTIVE;
+
                 $permissions = [];
-                try {
-                    $permissions = $authorization->effectivePermissions($membership);
-                } catch (\Throwable $e) {
-                    report($e);
-                    $permissions = $membership->isOwner()
-                        ? ['business.view', 'product.view', 'product.create', 'order.view', 'order.create', 'business.members.view']
-                        : ['business.view'];
+                if ($isActive) {
+                    try {
+                        $permissions = $authorization->effectivePermissions($membership);
+                    } catch (\Throwable $e) {
+                        report($e);
+                        $permissions = $membership->isOwner()
+                            ? ['business.view', 'product.view', 'product.create', 'order.view', 'order.create', 'business.members.view']
+                            : ['business.view'];
+                    }
                 }
 
                 $legacyCapabilities = [];
-                try {
-                    $legacyCapabilities = app(LegacyBusinessAccessService::class)
-                        ->legacyCapabilityCodesForMembership($membership->user_id, $membership->business_id);
-                } catch (\Throwable $e) {
-                    report($e);
+                if ($isActive) {
+                    try {
+                        $legacyCapabilities = app(LegacyBusinessAccessService::class)
+                            ->legacyCapabilityCodesForMembership($membership->user_id, $membership->business_id);
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
                 }
 
                 return [
                     'id' => $membership->id,
                     'uuid' => $membership->uuid,
+                    'status' => $membership->status,
                     'role' => $membership->role?->code,
                     'role_name' => $membership->role?->name,
                     'position' => $membership->position?->code,
@@ -237,6 +248,7 @@ class AuthUserPresenter
                         'name' => $membership->business?->displayName(),
                         'type' => $membership->business?->type?->code,
                         'category' => $membership->business?->category?->code,
+                        'status' => $membership->business?->status,
                         'legacy_transport_owner_id' => $membership->business?->legacy_transport_owner_id,
                         'legacy_garage_id' => $membership->business?->legacy_garage_id,
                     ],

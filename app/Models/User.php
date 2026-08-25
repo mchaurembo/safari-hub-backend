@@ -139,6 +139,15 @@ class User extends Authenticatable
         return $this->businessMemberships()->where('status', BusinessMembership::STATUS_ACTIVE);
     }
 
+    /** Active + suspended (so staff can see they were paused). */
+    public function visibleBusinessMemberships(): HasMany
+    {
+        return $this->businessMemberships()->whereIn('status', [
+            BusinessMembership::STATUS_ACTIVE,
+            BusinessMembership::STATUS_SUSPENDED,
+        ]);
+    }
+
     public function customerProfile(): HasOne
     {
         return $this->hasOne(CustomerProfile::class);

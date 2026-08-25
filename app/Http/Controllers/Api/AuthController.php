@@ -747,6 +747,30 @@ class AuthController extends Controller
 
         $releasedDrivers = 0;
 
+        // Owner / garage owner: pause businesses instead of removing the workspace.
+        if ($role === 'owner' || $role === 'garage_owner') {
+            $bizService = app(\App\Services\BusinessService::class);
+            $paused = $bizService->pauseOwnedBusinesses($user, $role);
+            if ($paused === []) {
+                // Commerce / hospitality owners (no legacy fleet/garage link).
+                $paused = $bizService->pauseOwnedBusinesses($user, null);
+            }
+            if ($paused !== []) {
+                $names = collect($paused)->pluck('name')->filter()->implode(', ');
+                $staffCount = collect($paused)->sum('suspended_members');
+
+                return response()->json([
+                    'message' => $staffCount > 0
+                        ? "Business paused ({$names}). {$staffCount} staff stopped. Resume the business, then reactivate staff manually."
+                        : "Business paused ({$names}). Resume anytime from Workspaces. Staff stay off until you reactivate them.",
+                    'history_preserved' => true,
+                    'paused_businesses' => $paused,
+                    'action' => 'paused',
+                    'user' => $this->authUserPayload($user->fresh()),
+                ]);
+            }
+        }
+
         if ($role === 'owner') {
             $fleet = $user->transportOwner;
             if ($fleet) {

@@ -40,6 +40,25 @@ class EnsureBusinessContext
 
         $membership = $this->authorization->resolveMembership($user, $businessId);
         if (! $membership) {
+            $suspended = \App\Models\BusinessMembership::query()
+                ->where('user_id', $user->id)
+                ->where('business_id', $businessId)
+                ->where('status', \App\Models\BusinessMembership::STATUS_SUSPENDED)
+                ->with('business')
+                ->first();
+
+            if ($suspended) {
+                $bizPaused = $suspended->business?->status === \App\Models\Business::STATUS_SUSPENDED;
+
+                return response()->json([
+                    'message' => $bizPaused
+                        ? 'This business is paused. Your access is suspended until the owner resumes operations and reactivates you.'
+                        : 'Your staff access is suspended. Ask the business owner to reactivate you.',
+                    'membership_status' => 'suspended',
+                    'business_status' => $suspended->business?->status,
+                ], 423);
+            }
+
             return response()->json(['message' => 'You do not have access to this business'], 403);
         }
 
@@ -82,6 +101,23 @@ class EnsureBusinessContext
         }
 
         $request->attributes->set('business_context', $context);
+
+        $business = $membership->business;
+        if ($business && $business->status === \App\Models\Business::STATUS_SUSPENDED) {
+            $path = $request->path();
+            $method = strtoupper($request->method());
+            $isPauseResume = str_ends_with($path, '/pause') || str_ends_with($path, '/resume');
+            $isReadOrMembers = $method === 'GET'
+                || str_contains($path, '/members');
+            $ownerAllowed = $membership->isOwner() && ($isPauseResume || $isReadOrMembers || $method === 'PUT');
+
+            if (! $ownerAllowed) {
+                return response()->json([
+                    'message' => 'This business is paused. The owner must resume operations first.',
+                    'business_status' => 'suspended',
+                ], 423);
+            }
+        }
 
         return $next($request);
     }

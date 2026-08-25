@@ -9,11 +9,14 @@ use App\Models\BusinessCapabilityAssignment;
 use App\Models\BusinessMembership;
 use App\Models\BusinessProfile;
 use App\Models\BusinessType;
+use App\Models\GarageMember;
 use App\Models\MembershipRole;
 use App\Models\Position;
+use App\Models\Technician;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class BusinessService
 {
@@ -147,6 +150,121 @@ class BusinessService
                 'status' => BusinessMembership::STATUS_TERMINATED,
                 'terminated_at' => now(),
             ]);
+    }
+
+    /**
+     * Pause a business: keep owner membership, stop staff operations.
+     * Staff stay suspended until the owner resumes them manually after resumeOperations().
+     *
+     * @return array{suspended_members: int, suspended_technicians: int}
+     */
+    public function pauseOperations(Business $business, User $actor): array
+    {
+        $this->assertOwnerActor($business, $actor);
+
+        return DB::transaction(function () use ($business) {
+            $business->update(['status' => Business::STATUS_SUSPENDED]);
+
+            $staffQuery = BusinessMembership::query()
+                ->where('business_id', $business->id)
+                ->where('status', BusinessMembership::STATUS_ACTIVE)
+                ->whereHas('role', fn ($q) => $q->where('code', '!=', MembershipRole::CODE_OWNER));
+
+            $staffIds = (clone $staffQuery)->pluck('id');
+            $suspendedMembers = 0;
+            foreach ($staffIds as $membershipId) {
+                $membership = BusinessMembership::find($membershipId);
+                if (! $membership) {
+                    continue;
+                }
+                $meta = is_array($membership->metadata) ? $membership->metadata : [];
+                $meta['paused_by_business'] = true;
+                $membership->update([
+                    'status' => BusinessMembership::STATUS_SUSPENDED,
+                    'metadata' => $meta,
+                ]);
+                $suspendedMembers++;
+            }
+
+            $suspendedTechnicians = 0;
+            if ($business->legacy_garage_id) {
+                $suspendedTechnicians = Technician::query()
+                    ->where('garage_id', $business->legacy_garage_id)
+                    ->whereIn('status', ['active', 'busy'])
+                    ->update(['status' => 'inactive']);
+
+                GarageMember::query()
+                    ->where('garage_id', $business->legacy_garage_id)
+                    ->where('status', 'active')
+                    ->whereNull('left_at')
+                    ->update(['status' => 'inactive']);
+            }
+
+            return [
+                'suspended_members' => $suspendedMembers,
+                'suspended_technicians' => (int) $suspendedTechnicians,
+            ];
+        });
+    }
+
+    /**
+     * Resume business operations. Staff remain suspended until reactivated manually.
+     */
+    public function resumeOperations(Business $business, User $actor): void
+    {
+        $this->assertOwnerActor($business, $actor);
+
+        if ($business->status === Business::STATUS_ACTIVE) {
+            return;
+        }
+
+        $business->update(['status' => Business::STATUS_ACTIVE]);
+    }
+
+    /**
+     * Pause every business the user owns (optionally filtered by legacy workspace role).
+     *
+     * @return list<array{business_id: int, name: string, suspended_members: int}>
+     */
+    public function pauseOwnedBusinesses(User $user, ?string $legacyRole = null): array
+    {
+        $query = Business::query()->where('owner_user_id', $user->id)
+            ->where('status', Business::STATUS_ACTIVE);
+
+        if ($legacyRole === 'owner') {
+            $query->whereNotNull('legacy_transport_owner_id');
+        } elseif ($legacyRole === 'garage_owner') {
+            $query->whereNotNull('legacy_garage_id');
+        }
+
+        $results = [];
+        foreach ($query->get() as $business) {
+            $stats = $this->pauseOperations($business, $user);
+            $results[] = [
+                'business_id' => $business->id,
+                'name' => $business->displayName(),
+                'suspended_members' => $stats['suspended_members'],
+            ];
+        }
+
+        return $results;
+    }
+
+    private function assertOwnerActor(Business $business, User $actor): void
+    {
+        $isOwner = (int) $business->owner_user_id === (int) $actor->id
+            || BusinessMembership::query()
+                ->where('business_id', $business->id)
+                ->where('user_id', $actor->id)
+                ->where('status', BusinessMembership::STATUS_ACTIVE)
+                ->whereHas('role', fn ($q) => $q->where('code', MembershipRole::CODE_OWNER))
+                ->exists();
+
+        if (! $isOwner) {
+            throw ValidationException::withMessages([
+                'business' => ['Only the business owner can pause or resume operations.'],
+            ]);
+        }
     }
 
     private function assignDefaultCapabilities(Business $business, BusinessType $type): void

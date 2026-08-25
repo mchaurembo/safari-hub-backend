@@ -32,6 +32,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('business.context')->group(function () {
         Route::get('/businesses/{business}', [BusinessController::class, 'show']);
+        Route::post('/businesses/{business}/pause', [BusinessController::class, 'pause']);
+        Route::post('/businesses/{business}/resume', [BusinessController::class, 'resume']);
         Route::get('/businesses/{business}/navigation', [BusinessNavigationController::class, 'show']);
 
         Route::get('/businesses/{business}/members', [BusinessMembershipController::class, 'index']);

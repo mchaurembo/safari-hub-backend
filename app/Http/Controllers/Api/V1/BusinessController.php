@@ -89,6 +89,47 @@ class BusinessController extends Controller
         }
     }
 
+    public function pause(Request $request, Business $business): JsonResponse
+    {
+        /** @var BusinessContext $context */
+        $context = $request->attributes->get('business_context');
+        if (! $context instanceof BusinessContext || (int) $context->businessId() !== (int) $business->id) {
+            return response()->json(['message' => 'Business context required'], 422);
+        }
+        if (! $context->membership?->isOwner()) {
+            return response()->json(['message' => 'Only the business owner can pause operations'], 403);
+        }
+
+        $stats = $this->businessService->pauseOperations($business, $request->user());
+        $business->refresh()->load(['category', 'type', 'profile', 'branches', 'capabilityAssignments.capability']);
+
+        return response()->json([
+            'message' => 'Business paused. Staff access is stopped until you resume the business and reactivate each person.',
+            'data' => $this->presentBusiness($business),
+            'stats' => $stats,
+        ]);
+    }
+
+    public function resume(Request $request, Business $business): JsonResponse
+    {
+        /** @var BusinessContext $context */
+        $context = $request->attributes->get('business_context');
+        if (! $context instanceof BusinessContext || (int) $context->businessId() !== (int) $business->id) {
+            return response()->json(['message' => 'Business context required'], 422);
+        }
+        if (! $context->membership?->isOwner()) {
+            return response()->json(['message' => 'Only the business owner can resume operations'], 403);
+        }
+
+        $this->businessService->resumeOperations($business, $request->user());
+        $business->refresh()->load(['category', 'type', 'profile', 'branches', 'capabilityAssignments.capability']);
+
+        return response()->json([
+            'message' => 'Business resumed. Reactivate staff manually from Employees when you are ready.',
+            'data' => $this->presentBusiness($business),
+        ]);
+    }
+
     /** @return array<string, mixed> */
     private function presentBusiness(Business $business): array
     {

@@ -19,7 +19,10 @@ class BusinessContextController extends Controller
     {
         $memberships = BusinessMembership::query()
             ->where('user_id', $request->user()->id)
-            ->where('status', BusinessMembership::STATUS_ACTIVE)
+            ->whereIn('status', [
+                BusinessMembership::STATUS_ACTIVE,
+                BusinessMembership::STATUS_SUSPENDED,
+            ])
             ->with(['business.type', 'business.category', 'role', 'position', 'defaultBranch'])
             ->orderBy('id')
             ->get()
@@ -46,6 +49,25 @@ class BusinessContextController extends Controller
 
         $membership = $this->authorization->resolveMembership($request->user(), (int) $data['business_id']);
         if (! $membership) {
+            $suspended = BusinessMembership::query()
+                ->where('user_id', $request->user()->id)
+                ->where('business_id', (int) $data['business_id'])
+                ->where('status', BusinessMembership::STATUS_SUSPENDED)
+                ->with('business')
+                ->first();
+
+            if ($suspended) {
+                $bizPaused = $suspended->business?->status === \App\Models\Business::STATUS_SUSPENDED;
+
+                return response()->json([
+                    'message' => $bizPaused
+                        ? 'This business is paused. Your access is suspended until the owner resumes operations and reactivates you.'
+                        : 'Your staff access is suspended. Ask the business owner to reactivate you.',
+                    'membership_status' => 'suspended',
+                    'business_status' => $suspended->business?->status,
+                ], 423);
+            }
+
             return response()->json(['message' => 'You do not have access to this business'], 403);
         }
 

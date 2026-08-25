@@ -122,6 +122,14 @@ class BusinessMembershipController extends Controller
             }
         }
 
+        if (($data['status'] ?? null) === BusinessMembership::STATUS_ACTIVE
+            && $business->status === Business::STATUS_SUSPENDED) {
+            return response()->json([
+                'message' => 'Resume the business first, then reactivate staff.',
+                'business_status' => 'suspended',
+            ], 422);
+        }
+
         if (($data['status'] ?? null) === BusinessMembership::STATUS_TERMINATED) {
             $data['terminated_at'] = now();
         }
