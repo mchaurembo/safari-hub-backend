@@ -15,18 +15,32 @@ class BusinessAuthorizationService
     {
         $membership->loadMissing(['role.permissions', 'position.permissions', 'business.capabilityAssignments.capability']);
 
-        $codes = $membership->role?->permissions->pluck('code') ?? collect();
-
-        if ($membership->position) {
-            $codes = $codes->merge($membership->position->permissions->pluck('code'));
-        }
-
         $enabledCapabilities = $membership->business->capabilityAssignments
             ->where('enabled', true)
             ->pluck('capability.code')
             ->filter()
             ->values()
             ->all();
+
+        // Owners always get full non-admin access for enabled business capabilities,
+        // even if membership_role_permissions was never seeded on this environment.
+        if ($membership->isOwner()) {
+            $codes = Permission::query()
+                ->where('code', 'not like', 'admin.%')
+                ->pluck('code');
+
+            return $codes
+                ->unique()
+                ->filter(fn (string $code) => $this->permissionAllowedByCapabilities($code, $enabledCapabilities))
+                ->values()
+                ->all();
+        }
+
+        $codes = $membership->role?->permissions->pluck('code') ?? collect();
+
+        if ($membership->position) {
+            $codes = $codes->merge($membership->position->permissions->pluck('code'));
+        }
 
         return $codes
             ->unique()

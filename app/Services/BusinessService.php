@@ -36,7 +36,8 @@ class BusinessService
                 'business_category_id' => $type->business_category_id,
                 'business_type_id' => $type->id,
                 'owner_user_id' => $user->id,
-                'status' => Business::STATUS_DRAFT,
+                'status' => Business::STATUS_ACTIVE,
+                'verification_status' => 'verified',
                 'email' => $data['email'] ?? $user->email,
                 'phone' => $data['phone'] ?? $user->phone,
             ]);
