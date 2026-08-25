@@ -36,7 +36,7 @@
 </IfModule>
 
 <IfModule mod_headers.c>
-    <FilesMatch "^(index\.html|favicon\.svg)$">
+    <FilesMatch "^(index\.html|favicon\.(ico|svg|png)|favicon-16\.png|favicon-32\.png)$">
         Header set Cache-Control "no-cache, no-store, must-revalidate"
         Header set Pragma "no-cache"
         Header set Expires "0"
