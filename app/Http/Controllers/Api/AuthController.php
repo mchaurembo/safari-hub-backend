@@ -70,7 +70,14 @@ class AuthController extends Controller
 
     private function authUserPayload(User $user): array
     {
-        return AuthUserPresenter::present($user->fresh());
+        $user = $user->fresh();
+        // Customer is the permanent default workspace for every account.
+        if ($user && ! $user->hasCapability('customer') && ! $user->hasCapability('admin')) {
+            $user->enrollCapability('customer');
+            $user = $user->fresh();
+        }
+
+        return AuthUserPresenter::present($user);
     }
 
     /** @return list<string> */
@@ -715,7 +722,7 @@ class AuthController extends Controller
     public function unenrollRole(Request $request, EmploymentService $employment): JsonResponse
     {
         $user = $request->user();
-        $allowed = $this->selfEnrollableRoles($user);
+        $allowed = \App\Support\ChapaCapabilities::selfUnenrollableRoles();
 
         $validated = $request->validate([
             'role' => ['required', Rule::in($allowed)],
@@ -723,12 +730,19 @@ class AuthController extends Controller
 
         $role = $validated['role'];
 
+        if ($role === 'customer') {
+            return response()->json([
+                'message' => 'Customer is the default workspace and cannot be removed.',
+            ], 422);
+        }
+
         if (! $user->hasCapability($role)) {
             return response()->json(['message' => 'You are not enrolled in this capability'], 422);
         }
 
-        if (count($user->activeCapabilityCodes()) <= 1) {
-            return response()->json(['message' => 'You must keep at least one capability'], 422);
+        // Every account keeps Customer as the baseline workspace.
+        if (! $user->hasCapability('customer')) {
+            $user->enrollCapability('customer');
         }
 
         $releasedDrivers = 0;

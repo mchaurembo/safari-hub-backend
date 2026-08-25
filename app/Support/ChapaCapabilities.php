@@ -31,13 +31,25 @@ class ChapaCapabilities
         return (bool) config('chapa.legacy_capability_pivot_writes', false);
     }
 
-    /** @return list<string> */
+    /** Roles a user may add themselves (without an employer invite). */
     public static function selfEnrollableRoles(): array
     {
         if (self::legacyPivotWritesEnabled()) {
             return ['customer', 'owner', 'garage_owner', 'technician'];
         }
 
+        // Business owner / garage / technician come from memberships — register a business instead.
         return ['customer'];
+    }
+
+    /**
+     * Roles a user may leave themselves.
+     * Customer is permanent (default workspace). Technician/managers/drivers are owner-managed.
+     *
+     * @return list<string>
+     */
+    public static function selfUnenrollableRoles(): array
+    {
+        return ['owner', 'garage_owner'];
     }
 }

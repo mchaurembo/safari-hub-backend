@@ -157,6 +157,7 @@ class GarageController extends Controller
             'pending' => (clone $bookings)->where('status', 'pending')->count(),
             'confirmed' => (clone $bookings)->where('status', 'confirmed')->count(),
             'assigned' => (clone $bookings)->where('status', 'assigned')->count(),
+            'queued' => (clone $bookings)->whereIn('status', ['pending', 'confirmed', 'assigned'])->count(),
             'in_progress' => (clone $bookings)->where('status', 'in_progress')->count(),
             'completed' => (clone $bookings)->where('status', 'completed')->count(),
             'cancelled' => (clone $bookings)->where('status', 'cancelled')->count(),
