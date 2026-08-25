@@ -4,14 +4,20 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Models\Business;
+use App\Models\CargoRequest;
 use App\Models\Complaint;
 use App\Models\Driver;
 use App\Models\Garage;
+use App\Models\GarageBooking;
 use App\Models\Payment;
 use App\Models\Role;
 use App\Models\Technician;
 use App\Models\TransportOwner;
+use App\Models\Trip;
 use App\Models\User;
+use App\Models\WorkOrder;
+use App\Services\Payments\PaymentStatuses;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -325,20 +331,84 @@ class AdminController extends Controller
 
         $from = $request->input('from', now()->startOfMonth()->toDateString());
         $to = $request->input('to', now()->toDateString());
+        $fromAt = \Carbon\Carbon::parse($from)->startOfDay();
+        $toAt = \Carbon\Carbon::parse($to)->endOfDay();
 
-        $bookingsCount = Booking::whereIn('status', ['paid', 'completed'])
-            ->whereBetween('created_at', [$from, $to])
+        $successfulPayments = Payment::query()
+            ->successful()
+            ->whereBetween('created_at', [$fromAt, $toAt]);
+
+        $totalRevenue = (float) (clone $successfulPayments)->sum('amount');
+        $successfulPaymentsCount = (clone $successfulPayments)->count();
+        $pendingPayments = Payment::query()
+            ->whereIn('status', [
+                PaymentStatuses::INITIATED,
+                PaymentStatuses::PENDING,
+                PaymentStatuses::PROCESSING,
+                PaymentStatuses::LEGACY_PENDING,
+            ])
+            ->whereBetween('created_at', [$fromAt, $toAt])
             ->count();
 
-        $revenue = Payment::whereIn('status', ['completed', 'SUCCESS'])
-            ->whereBetween('created_at', [$from, $to])
-            ->sum('amount');
+        $bookingsPaid = Booking::query()
+            ->whereIn('status', ['paid', 'completed'])
+            ->whereBetween('created_at', [$fromAt, $toAt])
+            ->count();
+        $bookingsCreated = Booking::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+        $trips = Trip::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+        $cargoRequests = CargoRequest::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+        $garageBookings = GarageBooking::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+        $workOrders = WorkOrder::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+        $newUsers = User::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+        $complaints = Complaint::query()->whereBetween('created_at', [$fromAt, $toAt])->count();
+
+        $totalUsers = User::query()->where('status', '!=', 'inactive')->count();
+        $activeOwners = TransportOwner::query()->where('status', 'approved')->count();
+        $pendingOwners = TransportOwner::query()->where('status', 'pending')->count();
+        $activeDrivers = Driver::query()->count();
+        $garages = Garage::query()->count();
+        $businesses = Business::query()->where('status', 'active')->count();
 
         return response()->json([
             'data' => [
-                'period' => ['from' => $from, 'to' => $to],
-                'bookings_count' => $bookingsCount,
-                'total_revenue' => (float) $revenue,
+                'period' => [
+                    'from' => $fromAt->toDateString(),
+                    'to' => $toAt->toDateString(),
+                ],
+                'finance' => [
+                    'total_revenue' => $totalRevenue,
+                    'successful_payments' => $successfulPaymentsCount,
+                    'pending_payments' => $pendingPayments,
+                    'average_payment' => $successfulPaymentsCount > 0
+                        ? round($totalRevenue / $successfulPaymentsCount, 2)
+                        : 0.0,
+                ],
+                'activity' => [
+                    'bookings_paid' => $bookingsPaid,
+                    'bookings_created' => $bookingsCreated,
+                    'trips' => $trips,
+                    'cargo_requests' => $cargoRequests,
+                    'garage_bookings' => $garageBookings,
+                    'work_orders' => $workOrders,
+                    'new_users' => $newUsers,
+                    'complaints' => $complaints,
+                ],
+                'platform' => [
+                    'total_users' => $totalUsers,
+                    'active_owners' => $activeOwners,
+                    'pending_owners' => $pendingOwners,
+                    'active_drivers' => $activeDrivers,
+                    'garages' => $garages,
+                    'businesses' => $businesses,
+                ],
+                // Flat fields (web + mobile compatibility)
+                'bookings_count' => $bookingsPaid,
+                'total_revenue' => $totalRevenue,
+                'total_bookings' => $bookingsPaid,
+                'total_trips' => $trips,
+                'total_users' => $totalUsers,
+                'active_owners' => $activeOwners,
+                'active_drivers' => $activeDrivers,
             ],
         ]);
     }

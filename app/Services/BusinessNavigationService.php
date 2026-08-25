@@ -81,18 +81,6 @@ class BusinessNavigationService
 
         return [
             [
-                'key' => 'business_overview',
-                'label' => 'Business',
-                'group' => 'business',
-                'icon' => 'business',
-                'capability' => null,
-                'permission' => 'business.view',
-                'route_resolver' => fn () => [
-                    'web' => "/business/{$bizId}",
-                    'mobile' => 'BusinessOverview',
-                ],
-            ],
-            [
                 'key' => 'fleet',
                 'label' => 'Fleet Management',
                 'group' => 'operations',
@@ -181,10 +169,10 @@ class BusinessNavigationService
                 'icon' => 'payments',
                 'capability' => 'payment_management',
                 'permission' => 'payment.view',
-                'route_resolver' => fn () => [
-                    'web' => '/customer/payments',
-                    'mobile' => 'CustomerTabs',
-                ],
+                // Stay in business ops — never deep-link to /customer/payments (that flips account mode to Customer).
+                'route_resolver' => fn ($b) => $b->legacy_transport_owner_id
+                    ? ['web' => '/owner?tab=earnings', 'mobile' => 'OwnerTabs']
+                    : null,
             ],
             [
                 'key' => 'members',
@@ -197,6 +185,19 @@ class BusinessNavigationService
                     'web' => "/business/{$bizId}/members",
                     'mobile' => 'BusinessMembers',
                 ],
+            ],
+            [
+                'key' => 'reports',
+                'label' => 'Reports',
+                'group' => 'finance',
+                'icon' => 'payments',
+                'capability' => 'reporting',
+                'permission' => 'report.view',
+                'route_resolver' => fn ($b) => $b->legacy_transport_owner_id
+                    ? ['web' => '/reports?dashRole=owner', 'mobile' => 'Reports']
+                    : ($b->legacy_garage_id
+                        ? ['web' => '/reports?dashRole=garage_owner', 'mobile' => 'Reports']
+                        : ['web' => '/reports', 'mobile' => 'Reports']),
             ],
         ];
     }

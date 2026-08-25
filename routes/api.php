@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\OwnerController;
 use App\Http\Controllers\Api\Payments\AdminPaymentController;
 use App\Http\Controllers\Api\Payments\PaymentController;
 use App\Http\Controllers\Api\Payments\PaymentWebhookController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RouteController;
 use App\Http\Controllers\Api\TripController;
 use App\Http\Controllers\Api\VehicleController;
@@ -74,6 +75,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/roles/enroll', [AuthController::class, 'enrollRole']);
     Route::post('/capabilities/unenroll', [AuthController::class, 'unenrollRole']);
     Route::post('/roles/unenroll', [AuthController::class, 'unenrollRole']);
+
+    // Role-scoped reports (owner / garage / customer / driver / technician)
+    Route::get('/me/reports', [ReportController::class, 'mine']);
+    Route::get('/me/reports/details', [ReportController::class, 'details']);
 
     // Customer
     Route::get('/my-bookings', [BookingController::class, 'myBookings']);
