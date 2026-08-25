@@ -171,11 +171,8 @@ class BusinessNavigationService
                 'icon' => 'payments',
                 'capability' => 'reporting',
                 'permission' => 'report.view',
-                'route_resolver' => fn ($b) => $b->legacy_transport_owner_id
-                    ? ['web' => '/reports?dashRole=owner', 'mobile' => 'Reports']
-                    : ($b->legacy_garage_id
-                        ? ['web' => '/reports?dashRole=garage_owner', 'mobile' => 'Reports']
-                        : ['web' => '/reports', 'mobile' => 'Reports']),
+                // Plain /reports — do not put dashRole in the URL (that would flip the account switcher).
+                'route_resolver' => fn () => ['web' => '/reports', 'mobile' => 'Reports'],
             ],
         ];
     }

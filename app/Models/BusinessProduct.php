@@ -19,6 +19,7 @@ class BusinessProduct extends Model
     protected $fillable = [
         'business_id',
         'business_product_category_id',
+        'product_catalog_item_id',
         'sku',
         'name',
         'description',
@@ -42,5 +43,10 @@ class BusinessProduct extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(BusinessProductCategory::class, 'business_product_category_id');
+    }
+
+    public function catalogItem(): BelongsTo
+    {
+        return $this->belongsTo(ProductCatalogItem::class, 'product_catalog_item_id');
     }
 }

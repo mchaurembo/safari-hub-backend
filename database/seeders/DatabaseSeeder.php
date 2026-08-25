@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call(RoleSeeder::class);
         $this->call(PermissionSeeder::class);
         $this->call(PaymentSeeder::class);
+        $this->call(CatalogSeeder::class);
 
         $adminRole = Role::where('name', 'admin')->first();
         $ownerRole = Role::where('name', 'owner')->first();

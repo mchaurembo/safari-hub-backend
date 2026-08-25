@@ -228,13 +228,32 @@ class GarageController extends Controller
         $garage = $this->requireOwnerGarage($request);
         $this->authorize('manageServices', $garage);
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'nullable|string|max:255',
+            'service_catalog_item_id' => 'nullable|exists:service_catalog_items,id',
             'description' => 'nullable|string|max:2000',
             'price' => 'nullable|numeric|min:0',
-            'type' => 'required|in:fixed,estimate',
+            'type' => 'nullable|in:fixed,estimate',
             'duration_minutes' => 'nullable|integer|min:15|max:1440',
             'status' => 'sometimes|in:active,inactive',
         ]);
+
+        if (! empty($validated['service_catalog_item_id'])) {
+            $catalogItem = \App\Models\ServiceCatalogItem::query()
+                ->where('is_active', true)
+                ->findOrFail($validated['service_catalog_item_id']);
+            $validated['name'] = $validated['name'] ?: $catalogItem->name;
+            $validated['description'] = $validated['description'] ?? $catalogItem->description;
+            $validated['type'] = $validated['type'] ?? $catalogItem->default_pricing_type;
+            if (empty($validated['duration_minutes']) && $catalogItem->default_duration_minutes) {
+                $validated['duration_minutes'] = $catalogItem->default_duration_minutes;
+            }
+        }
+
+        if (empty($validated['name'])) {
+            return response()->json(['message' => 'Service name is required.'], 422);
+        }
+
+        $validated['type'] = $validated['type'] ?? 'fixed';
 
         $service = $garage->services()->create([
             ...$validated,

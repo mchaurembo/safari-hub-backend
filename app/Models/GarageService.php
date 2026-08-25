@@ -15,6 +15,7 @@ class GarageService extends Model
         'business_id',
         'garage_id',
         'name',
+        'service_catalog_item_id',
         'description',
         'price',
         'type',
@@ -33,6 +34,11 @@ class GarageService extends Model
     public function garage(): BelongsTo
     {
         return $this->belongsTo(Garage::class);
+    }
+
+    public function catalogItem(): BelongsTo
+    {
+        return $this->belongsTo(ServiceCatalogItem::class, 'service_catalog_item_id');
     }
 
     public function bookings(): HasMany

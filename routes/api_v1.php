@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\BusinessMembershipController;
 use App\Http\Controllers\Api\V1\BusinessNavigationController;
 use App\Http\Controllers\Api\V1\BusinessOrderController;
 use App\Http\Controllers\Api\V1\BusinessProductController;
+use App\Http\Controllers\Api\V1\PlatformCatalogController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -19,6 +20,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/business-types', [BusinessCatalogController::class, 'types']);
     Route::get('/positions', [BusinessCatalogController::class, 'positions']);
     Route::get('/membership-roles', [BusinessCatalogController::class, 'membershipRoles']);
+
+    Route::get('/catalog/product-units', [PlatformCatalogController::class, 'productUnits']);
+    Route::get('/catalog/product-categories', [PlatformCatalogController::class, 'productCategories']);
+    Route::get('/catalog/product-items', [PlatformCatalogController::class, 'productItems']);
+    Route::get('/catalog/service-categories', [PlatformCatalogController::class, 'serviceCategories']);
+    Route::get('/catalog/service-items', [PlatformCatalogController::class, 'serviceItems']);
 
     Route::get('/businesses', [BusinessController::class, 'index']);
     Route::post('/businesses', [BusinessController::class, 'store']);
