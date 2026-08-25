@@ -50,7 +50,7 @@ class BusinessNavigationService
     }
 
     /**
-     * Garage / car wash: bookings, customers, and inventory live inside Manage garage.
+     * Garage / car wash: bookings live inside Manage garage.
      * Hide duplicate sidebar rows and customer-payments until owner finance UI exists.
      *
      * @param  list<array<string, mixed>>  $modules
@@ -64,7 +64,7 @@ class BusinessNavigationService
             return $modules;
         }
 
-        $hideKeys = ['bookings', 'customers', 'inventory', 'payments'];
+        $hideKeys = ['bookings', 'payments'];
 
         return array_values(array_filter(
             $modules,
@@ -117,17 +117,6 @@ class BusinessNavigationService
                         : ['web' => "/business/{$bizId}", 'mobile' => 'BusinessOverview']),
             ],
             [
-                'key' => 'customers',
-                'label' => 'Customers',
-                'group' => 'operations',
-                'icon' => 'users',
-                'capability' => 'customer_management',
-                'permission' => 'customer.view',
-                'route_resolver' => fn ($b) => $b->legacy_garage_id
-                    ? ['web' => '/garage?tab=customers', 'mobile' => 'GarageTabs']
-                    : ['web' => "/business/{$bizId}", 'mobile' => 'BusinessOverview'],
-            ],
-            [
                 'key' => 'products',
                 'label' => 'Products',
                 'group' => 'commerce',
@@ -150,17 +139,6 @@ class BusinessNavigationService
                     'web' => "/business/{$bizId}/orders",
                     'mobile' => 'BusinessOrders',
                 ],
-            ],
-            [
-                'key' => 'inventory',
-                'label' => 'Inventory',
-                'group' => 'commerce',
-                'icon' => 'inventory',
-                'capability' => 'inventory_management',
-                'permission' => 'inventory.view',
-                'route_resolver' => fn ($b) => $b->legacy_garage_id
-                    ? ['web' => '/garage', 'mobile' => 'GarageTabs']
-                    : ['web' => "/business/{$bizId}", 'mobile' => 'BusinessOverview'],
             ],
             [
                 'key' => 'payments',
