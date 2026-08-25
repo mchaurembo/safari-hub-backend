@@ -204,6 +204,24 @@ class AuthUserPresenter
 
         return $user->activeBusinessMemberships
             ->map(function ($membership) use ($authorization) {
+                $permissions = [];
+                try {
+                    $permissions = $authorization->effectivePermissions($membership);
+                } catch (\Throwable $e) {
+                    report($e);
+                    $permissions = $membership->isOwner()
+                        ? ['business.view', 'product.view', 'product.create', 'order.view', 'order.create', 'business.members.view']
+                        : ['business.view'];
+                }
+
+                $legacyCapabilities = [];
+                try {
+                    $legacyCapabilities = app(LegacyBusinessAccessService::class)
+                        ->legacyCapabilityCodesForMembership($membership->user_id, $membership->business_id);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+
                 return [
                     'id' => $membership->id,
                     'uuid' => $membership->uuid,
@@ -211,9 +229,8 @@ class AuthUserPresenter
                     'role_name' => $membership->role?->name,
                     'position' => $membership->position?->code,
                     'position_name' => $membership->position?->name,
-                    'permissions' => $authorization->effectivePermissions($membership),
-                    'legacy_capabilities' => app(LegacyBusinessAccessService::class)
-                        ->legacyCapabilityCodesForMembership($membership->user_id, $membership->business_id),
+                    'permissions' => $permissions,
+                    'legacy_capabilities' => $legacyCapabilities,
                     'business' => [
                         'id' => $membership->business?->id,
                         'uuid' => $membership->business?->uuid,

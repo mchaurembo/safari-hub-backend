@@ -60,16 +60,33 @@ class BusinessController extends Controller
 
     public function show(Request $request, Business $business): JsonResponse
     {
-        /** @var BusinessContext $context */
-        $context = $request->attributes->get('business_context');
+        try {
+            /** @var BusinessContext|null $context */
+            $context = $request->attributes->get('business_context');
 
-        if (! $context->can('business.view')) {
-            return response()->json(['message' => 'Forbidden'], 403);
+            if (! $context instanceof BusinessContext) {
+                return response()->json(['message' => 'Business context required'], 422);
+            }
+
+            if ((int) $context->businessId() !== (int) $business->id) {
+                return response()->json(['message' => 'Business context mismatch'], 422);
+            }
+
+            $isOwner = $context->membership?->isOwner() === true;
+            if (! $isOwner && ! $context->can('business.view')) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+
+            $business->load(['category', 'type', 'profile', 'branches', 'capabilityAssignments.capability']);
+
+            return response()->json(['data' => $this->presentBusiness($business)]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'Could not load business: '.$e->getMessage(),
+            ], 500);
         }
-
-        $business->load(['category', 'type', 'profile', 'branches', 'capabilityAssignments.capability']);
-
-        return response()->json(['data' => $this->presentBusiness($business)]);
     }
 
     /** @return array<string, mixed> */
@@ -87,12 +104,13 @@ class BusinessController extends Controller
             'category' => $business->category?->only(['id', 'code', 'name']),
             'type' => $business->type?->only(['id', 'code', 'name']),
             'profile' => $business->profile,
-            'branches' => $business->branches,
+            'branches' => $business->branches?->values()->all() ?? [],
             'capabilities' => $business->capabilityAssignments
                 ->where('enabled', true)
                 ->map(fn ($a) => $a->capability?->code)
                 ->filter()
-                ->values(),
+                ->values()
+                ->all(),
             'legacy_transport_owner_id' => $business->legacy_transport_owner_id,
             'legacy_garage_id' => $business->legacy_garage_id,
         ];

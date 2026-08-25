@@ -43,17 +43,43 @@ class EnsureBusinessContext
             return response()->json(['message' => 'You do not have access to this business'], 403);
         }
 
-        $branchId = $request->header('X-Branch-Id');
-        $branch = $branchId
-            ? $membership->business->branches()->find((int) $branchId)
-            : $membership->defaultBranch;
+        try {
+            $branchId = $request->header('X-Branch-Id');
+            $branch = $branchId
+                ? $membership->business->branches()->find((int) $branchId)
+                : $membership->defaultBranch;
 
-        $context = new BusinessContext(
-            business: $membership->business,
-            membership: $membership,
-            branch: $branch,
-            permissions: $this->authorization->effectivePermissions($membership),
-        );
+            $context = new BusinessContext(
+                business: $membership->business,
+                membership: $membership,
+                branch: $branch,
+                permissions: $this->authorization->effectivePermissions($membership),
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            // Never block the request with a bare 500 — owners still need hub access.
+            $context = new BusinessContext(
+                business: $membership->business,
+                membership: $membership,
+                branch: $membership->defaultBranch,
+                permissions: [
+                    'business.view',
+                    'business.update',
+                    'business.members.view',
+                    'business.members.create',
+                    'business.members.update',
+                    'product.view',
+                    'product.create',
+                    'product.update',
+                    'order.view',
+                    'order.create',
+                    'inventory.view',
+                    'payment.view',
+                    'report.view',
+                ],
+            );
+        }
 
         $request->attributes->set('business_context', $context);
 

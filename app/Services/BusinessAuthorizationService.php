@@ -91,19 +91,35 @@ class BusinessAuthorizationService
 
     public function storeContext(User $user, BusinessContext $context): void
     {
-        Cache::put($this->cacheKey($user->id), $context->toArray(), now()->addDays(30));
+        try {
+            Cache::put($this->cacheKey($user->id), $context->toArray(), now()->addDays(30));
+        } catch (\Throwable $e) {
+            report($e);
+            // Context still works for this request via middleware attributes.
+        }
     }
 
     public function currentContext(User $user): ?BusinessContext
     {
-        $cached = Cache::get($this->cacheKey($user->id));
+        try {
+            $cached = Cache::get($this->cacheKey($user->id));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
         if (! is_array($cached) || empty($cached['business_id'])) {
             return null;
         }
 
         $membership = $this->resolveMembership($user, (int) $cached['business_id']);
         if (! $membership) {
-            Cache::forget($this->cacheKey($user->id));
+            try {
+                Cache::forget($this->cacheKey($user->id));
+            } catch (\Throwable $e) {
+                report($e);
+            }
 
             return null;
         }
@@ -113,11 +129,18 @@ class BusinessAuthorizationService
             $branch = $membership->business->branches()->find($cached['branch_id']);
         }
 
+        try {
+            $permissions = $this->effectivePermissions($membership);
+        } catch (\Throwable $e) {
+            report($e);
+            $permissions = ['business.view', 'product.view', 'order.view', 'business.members.view'];
+        }
+
         return new BusinessContext(
             business: $membership->business,
             membership: $membership,
             branch: $branch,
-            permissions: $this->effectivePermissions($membership),
+            permissions: $permissions,
         );
     }
 

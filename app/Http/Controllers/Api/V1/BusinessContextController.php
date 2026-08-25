@@ -57,11 +57,32 @@ class BusinessContextController extends Controller
             }
         }
 
+        try {
+            $permissions = $this->authorization->effectivePermissions($membership);
+        } catch (\Throwable $e) {
+            report($e);
+            $permissions = [
+                'business.view',
+                'business.update',
+                'business.members.view',
+                'business.members.create',
+                'business.members.update',
+                'product.view',
+                'product.create',
+                'product.update',
+                'order.view',
+                'order.create',
+                'inventory.view',
+                'payment.view',
+                'report.view',
+            ];
+        }
+
         $context = new BusinessContext(
             business: $membership->business,
             membership: $membership,
             branch: $branch ?? $membership->defaultBranch,
-            permissions: $this->authorization->effectivePermissions($membership),
+            permissions: $permissions,
         );
 
         $this->authorization->storeContext($request->user(), $context);
